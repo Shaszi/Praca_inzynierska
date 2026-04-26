@@ -6,25 +6,28 @@ const MAX_SPEED = 2.1
 const UNEVEN_RATIO = 1.35
 
 function getPathLength(stroke: Stroke): number {
-  if (stroke.length < 2) {
+  if (stroke.points.length < 2) {
     return 0
   }
 
   let totalLength = 0
-  for (let index = 1; index < stroke.length; index += 1) {
-    totalLength += distanceBetweenPoints(stroke[index - 1], stroke[index])
+  for (let index = 1; index < stroke.points.length; index += 1) {
+    totalLength += distanceBetweenPoints(stroke.points[index - 1], stroke.points[index])
   }
 
   return totalLength
 }
 
 export function getFeedback(stroke: Stroke): string {
-  if (stroke.length < 3) {
+  if (stroke.points.length < 3) {
     return 'Try smoother motion'
   }
 
   const pathLength = getPathLength(stroke)
-  const directDistance = distanceBetweenPoints(stroke[0], stroke[stroke.length - 1])
+  const directDistance = distanceBetweenPoints(
+    stroke.points[0],
+    stroke.points[stroke.points.length - 1],
+  )
   const movementRatio = directDistance > 0 ? pathLength / directDistance : Infinity
 
   if (movementRatio > UNEVEN_RATIO) {
@@ -32,7 +35,7 @@ export function getFeedback(stroke: Stroke): string {
   }
 
   const duration = Math.max(
-    stroke[stroke.length - 1].timestamp - stroke[0].timestamp,
+    stroke.points[stroke.points.length - 1].timestamp - stroke.points[0].timestamp,
     1,
   )
   const speed = pathLength / duration

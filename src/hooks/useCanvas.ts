@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useRef } from 'react'
 import type { PointerEvent as ReactPointerEvent } from 'react'
-import type { Point, Stroke } from '../types/drawing'
+import type { Point, Stroke, Tool } from '../types/drawing'
 
 type UseCanvasOptions = {
   userStrokes: Stroke[]
   referenceStrokes?: Stroke[]
   brushSize: number
+  tool?: Tool
   userStrokeColor?: string
   referenceStrokeColor?: string
   onStrokeComplete: (stroke: Stroke) => void
+  onEraseAtPoint?: (point: Point) => void
   onCurrentStrokePointCountChange?: (count: number) => void
 }
 
@@ -33,16 +35,19 @@ export function useCanvas({
   userStrokes,
   referenceStrokes = [],
   brushSize,
+  tool = 'brush',
   userStrokeColor = DEFAULT_USER_STROKE_COLOR,
   referenceStrokeColor = DEFAULT_REFERENCE_STROKE_COLOR,
   onStrokeComplete,
+  onEraseAtPoint,
   onCurrentStrokePointCountChange,
 }: UseCanvasOptions): UseCanvasResult {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
-  const isDrawingRef = useRef(false)
-  const currentStrokeRef = useRef<Stroke>([])
+  const isPointerActiveRef = useRef(false)
+  const currentStrokePointsRef = useRef<Point[]>([])
+  const currentStrokeBrushSizeRef = useRef(brushSize)
   const drawQueueRef = useRef<Point[]>([])
   const lastDrawnPointRef = useRef<Point | null>(null)
   const frameIdRef = useRef<number | null>(null)
@@ -76,26 +81,27 @@ export function useCanvas({
       context: CanvasRenderingContext2D,
       stroke: Stroke,
       color: string,
-      lineWidth: number,
+      lineWidthOverride?: number,
       alpha = 1,
     ) => {
-      if (stroke.length === 0) {
+      if (stroke.points.length === 0) {
         return
       }
 
+      const lineWidth = lineWidthOverride ?? stroke.brushSize
       configureContext(context, color, lineWidth, alpha)
 
-      if (stroke.length === 1) {
+      if (stroke.points.length === 1) {
         context.beginPath()
-        context.arc(stroke[0].x, stroke[0].y, lineWidth / 2, 0, Math.PI * 2)
+        context.arc(stroke.points[0].x, stroke.points[0].y, lineWidth / 2, 0, Math.PI * 2)
         context.fill()
         return
       }
 
       context.beginPath()
-      context.moveTo(stroke[0].x, stroke[0].y)
-      for (let index = 1; index < stroke.length; index += 1) {
-        context.lineTo(stroke[index].x, stroke[index].y)
+      context.moveTo(stroke.points[0].x, stroke.points[0].y)
+      for (let index = 1; index < stroke.points.length; index += 1) {
+        context.lineTo(stroke.points[index].x, stroke.points[index].y)
       }
       context.stroke()
     },
@@ -117,19 +123,26 @@ export function useCanvas({
     context.clearRect(0, 0, width, height)
 
     for (const stroke of referenceStrokes) {
-      drawStroke(context, stroke, referenceStrokeColor, Math.max(brushSize - 1, 1), 0.9)
+      drawStroke(context, stroke, referenceStrokeColor, undefined, 0.9)
     }
 
     for (const stroke of userStrokes) {
-      drawStroke(context, stroke, userStrokeColor, brushSize)
+      drawStroke(context, stroke, userStrokeColor)
     }
 
-    if (currentStrokeRef.current.length > 0) {
-      drawStroke(context, currentStrokeRef.current, userStrokeColor, brushSize)
+    if (currentStrokePointsRef.current.length > 0 && tool === 'brush') {
+      drawStroke(
+        context,
+        {
+          points: currentStrokePointsRef.current,
+          brushSize: currentStrokeBrushSizeRef.current,
+        },
+        userStrokeColor,
+      )
     }
 
     context.globalAlpha = 1
-  }, [brushSize, drawStroke, referenceStrokeColor, referenceStrokes, userStrokeColor, userStrokes])
+  }, [drawStroke, referenceStrokeColor, referenceStrokes, tool, userStrokeColor, userStrokes])
 
   const drawQueuedPoints = useCallback(() => {
     const canvas = canvasRef.current
@@ -147,7 +160,7 @@ export function useCanvas({
       return
     }
 
-    configureContext(context, userStrokeColor, brushSize)
+    configureContext(context, userStrokeColor, currentStrokeBrushSizeRef.current)
 
     const startPoint = lastDrawnPointRef.current ?? queue[0]
     context.beginPath()
@@ -160,7 +173,7 @@ export function useCanvas({
 
     context.stroke()
     queue.length = 0
-  }, [brushSize, configureContext, userStrokeColor])
+  }, [configureContext, userStrokeColor])
 
   const scheduleFrame = useCallback(() => {
     if (frameIdRef.current !== null) {
@@ -222,18 +235,30 @@ export function useCanvas({
       event.preventDefault()
       canvas.setPointerCapture(event.pointerId)
 
-      isDrawingRef.current = true
-      currentStrokeRef.current = [point]
+      isPointerActiveRef.current = true
+
+      if (tool === 'eraser') {
+        onEraseAtPoint?.(point)
+        return
+      }
+
+      currentStrokeBrushSizeRef.current = brushSize
+      currentStrokePointsRef.current = [point]
       drawQueueRef.current = [point]
       lastDrawnPointRef.current = point
-
       onCurrentStrokePointCountChange?.(1)
 
       const context = canvas.getContext('2d')
       if (context) {
-        configureContext(context, userStrokeColor, brushSize)
+        configureContext(context, userStrokeColor, currentStrokeBrushSizeRef.current)
         context.beginPath()
-        context.arc(point.x, point.y, brushSize / 2, 0, Math.PI * 2)
+        context.arc(
+          point.x,
+          point.y,
+          currentStrokeBrushSizeRef.current / 2,
+          0,
+          Math.PI * 2,
+        )
         context.fill()
       }
 
@@ -244,14 +269,16 @@ export function useCanvas({
       buildPointFromEvent,
       configureContext,
       onCurrentStrokePointCountChange,
+      onEraseAtPoint,
       scheduleFrame,
+      tool,
       userStrokeColor,
     ],
   )
 
   const handlePointerMove = useCallback(
     (event: ReactPointerEvent<HTMLCanvasElement>) => {
-      if (!isDrawingRef.current) {
+      if (!isPointerActiveRef.current) {
         return
       }
 
@@ -260,31 +287,46 @@ export function useCanvas({
         return
       }
 
-      const activeStroke = currentStrokeRef.current
-      const previousPoint = activeStroke[activeStroke.length - 1]
+      if (tool === 'eraser') {
+        onEraseAtPoint?.(point)
+        return
+      }
+
+      const activePoints = currentStrokePointsRef.current
+      const previousPoint = activePoints[activePoints.length - 1]
 
       if (previousPoint && previousPoint.x === point.x && previousPoint.y === point.y) {
         return
       }
 
-      activeStroke.push(point)
-      onCurrentStrokePointCountChange?.(activeStroke.length)
-
+      activePoints.push(point)
+      onCurrentStrokePointCountChange?.(activePoints.length)
       drawQueueRef.current.push(point)
       scheduleFrame()
     },
-    [buildPointFromEvent, onCurrentStrokePointCountChange, scheduleFrame],
+    [buildPointFromEvent, onCurrentStrokePointCountChange, onEraseAtPoint, scheduleFrame, tool],
   )
 
   const handlePointerUp = useCallback(
     (event: ReactPointerEvent<HTMLCanvasElement>) => {
-      if (!isDrawingRef.current) {
+      if (!isPointerActiveRef.current) {
         return
       }
 
       const canvas = canvasRef.current
       if (canvas?.hasPointerCapture(event.pointerId)) {
         canvas.releasePointerCapture(event.pointerId)
+      }
+
+      isPointerActiveRef.current = false
+
+      if (tool === 'eraser') {
+        currentStrokePointsRef.current = []
+        drawQueueRef.current = []
+        lastDrawnPointRef.current = null
+        onCurrentStrokePointCountChange?.(0)
+        redrawScene()
+        return
       }
 
       if (frameIdRef.current !== null) {
@@ -294,19 +336,21 @@ export function useCanvas({
 
       drawQueuedPoints()
 
-      const completedStroke = currentStrokeRef.current.map((point) => ({ ...point }))
-      if (completedStroke.length > 0) {
-        onStrokeComplete(completedStroke)
+      const completedPoints = currentStrokePointsRef.current.map((point) => ({ ...point }))
+      if (completedPoints.length > 0) {
+        onStrokeComplete({
+          points: completedPoints,
+          brushSize: currentStrokeBrushSizeRef.current,
+        })
       }
 
-      isDrawingRef.current = false
-      currentStrokeRef.current = []
+      currentStrokePointsRef.current = []
       drawQueueRef.current = []
       lastDrawnPointRef.current = null
       onCurrentStrokePointCountChange?.(0)
       redrawScene()
     },
-    [drawQueuedPoints, onCurrentStrokePointCountChange, onStrokeComplete, redrawScene],
+    [drawQueuedPoints, onCurrentStrokePointCountChange, onStrokeComplete, redrawScene, tool],
   )
 
   useEffect(() => {
@@ -336,6 +380,7 @@ export function useCanvas({
       if (frameIdRef.current !== null) {
         window.cancelAnimationFrame(frameIdRef.current)
       }
+
       onCurrentStrokePointCountChange?.(0)
     }
   }, [onCurrentStrokePointCountChange])

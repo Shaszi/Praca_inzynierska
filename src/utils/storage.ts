@@ -2,6 +2,7 @@ import type { Point, ReferenceDrawing, Stroke } from '../types/drawing'
 import { cloneStrokes } from './strokes'
 
 const REFERENCE_STORAGE_KEY = 'drawing-training-references'
+const DEFAULT_BRUSH_SIZE = 5
 
 export type StorageResult<T> = {
   data: T
@@ -24,16 +25,28 @@ function isPoint(value: unknown): value is Point {
   )
 }
 
-function isStroke(value: unknown): value is Stroke {
-  return Array.isArray(value) && value.every((point) => isPoint(point))
+function isModernStroke(value: unknown): value is Stroke {
+  if (typeof value !== 'object' || value === null) {
+    return false
+  }
+
+  const stroke = value as Partial<Stroke>
+  return (
+    typeof stroke.brushSize === 'number' &&
+    Number.isFinite(stroke.brushSize) &&
+    stroke.brushSize > 0 &&
+    Array.isArray(stroke.points) &&
+    stroke.points.every((point) => isPoint(point))
+  )
 }
 
-export function validateReference(value: unknown): value is ReferenceDrawing {
+function isModernReference(value: unknown): value is ReferenceDrawing {
   if (typeof value !== 'object' || value === null) {
     return false
   }
 
   const reference = value as Partial<ReferenceDrawing>
+
   return (
     typeof reference.id === 'string' &&
     reference.id.trim().length > 0 &&
@@ -42,21 +55,79 @@ export function validateReference(value: unknown): value is ReferenceDrawing {
     typeof reference.createdAt === 'number' &&
     Number.isFinite(reference.createdAt) &&
     Array.isArray(reference.strokes) &&
-    reference.strokes.every((stroke) => isStroke(stroke))
+    reference.strokes.every((stroke) => isModernStroke(stroke))
   )
 }
 
-function cloneReference(reference: ReferenceDrawing): ReferenceDrawing {
+function normalizeStroke(value: unknown): Stroke | null {
+  if (isModernStroke(value)) {
+    return {
+      brushSize: value.brushSize,
+      points: value.points.map((point) => ({ ...point })),
+    }
+  }
+
+  // Backward compatibility for legacy storage format: Stroke was Point[].
+  if (Array.isArray(value) && value.every((point) => isPoint(point))) {
+    return {
+      brushSize: DEFAULT_BRUSH_SIZE,
+      points: value.map((point) => ({ ...point })),
+    }
+  }
+
+  return null
+}
+
+function normalizeReference(value: unknown): ReferenceDrawing | null {
+  if (typeof value !== 'object' || value === null) {
+    return null
+  }
+
+  const reference = value as Partial<ReferenceDrawing>
+
+  if (
+    typeof reference.id !== 'string' ||
+    reference.id.trim().length === 0 ||
+    typeof reference.name !== 'string' ||
+    reference.name.trim().length === 0 ||
+    typeof reference.createdAt !== 'number' ||
+    !Number.isFinite(reference.createdAt) ||
+    !Array.isArray(reference.strokes)
+  ) {
+    return null
+  }
+
+  const normalizedStrokes: Stroke[] = []
+  for (const strokeCandidate of reference.strokes) {
+    const normalizedStroke = normalizeStroke(strokeCandidate)
+    if (!normalizedStroke) {
+      return null
+    }
+
+    normalizedStrokes.push(normalizedStroke)
+  }
+
   return {
     id: reference.id,
     name: reference.name,
-    strokes: cloneStrokes(reference.strokes),
     createdAt: reference.createdAt,
+    strokes: normalizedStrokes,
   }
 }
 
+function cloneReferences(references: ReferenceDrawing[]): ReferenceDrawing[] {
+  return references.map((reference) => ({
+    ...reference,
+    strokes: cloneStrokes(reference.strokes),
+  }))
+}
+
+export function validateReference(value: unknown): value is ReferenceDrawing {
+  return isModernReference(value)
+}
+
 export function isStrokeCollectionEmpty(strokes: Stroke[]): boolean {
-  return strokes.length === 0 || strokes.every((stroke) => stroke.length === 0)
+  return strokes.length === 0 || strokes.every((stroke) => stroke.points.length === 0)
 }
 
 export function loadReferences(): StorageResult<ReferenceDrawing[]> {
@@ -86,18 +157,23 @@ export function loadReferences(): StorageResult<ReferenceDrawing[]> {
     return { data: [], error: 'Saved references have an invalid format.' }
   }
 
-  const validReferences = parsed.filter((item): item is ReferenceDrawing =>
-    validateReference(item),
-  )
+  const normalized: ReferenceDrawing[] = []
 
-  if (validReferences.length !== parsed.length) {
+  for (const candidate of parsed) {
+    const normalizedReference = normalizeReference(candidate)
+    if (normalizedReference) {
+      normalized.push(normalizedReference)
+    }
+  }
+
+  if (normalized.length !== parsed.length) {
     return {
-      data: validReferences.map(cloneReference),
+      data: cloneReferences(normalized),
       error: 'Some saved references were invalid and were ignored.',
     }
   }
 
-  return { data: validReferences.map(cloneReference), error: null }
+  return { data: cloneReferences(normalized), error: null }
 }
 
 export function saveReferences(references: ReferenceDrawing[]): StorageResult<null> {

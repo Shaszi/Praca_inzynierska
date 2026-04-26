@@ -4,7 +4,12 @@ export type Point = {
   timestamp: number
 }
 
-export type Stroke = Point[]
+export type Stroke = {
+  points: Point[]
+  brushSize: number
+}
+
+export type Tool = 'brush' | 'eraser'
 
 export type GuideType = 'line' | 'circle'
 

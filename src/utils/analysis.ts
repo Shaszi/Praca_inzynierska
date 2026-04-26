@@ -10,8 +10,8 @@ export function distanceBetweenPoints(a: Point, b: Point): number {
   return Math.hypot(dx, dy)
 }
 
-export function normalizeStroke(stroke: Stroke): Stroke {
-  if (stroke.length === 0) {
+function normalizePoints(points: Point[]): Point[] {
+  if (points.length === 0) {
     return []
   }
 
@@ -20,7 +20,7 @@ export function normalizeStroke(stroke: Stroke): Stroke {
   let minY = Infinity
   let maxY = -Infinity
 
-  for (const point of stroke) {
+  for (const point of points) {
     minX = Math.min(minX, point.x)
     maxX = Math.max(maxX, point.x)
     minY = Math.min(minY, point.y)
@@ -31,47 +31,48 @@ export function normalizeStroke(stroke: Stroke): Stroke {
   const centerY = (minY + maxY) / 2
   const scale = Math.max(maxX - minX, maxY - minY, EPSILON)
 
-  return stroke.map((point) => ({
+  return points.map((point) => ({
     x: (point.x - centerX) / scale,
     y: (point.y - centerY) / scale,
     timestamp: point.timestamp,
   }))
 }
 
-function strokeLength(stroke: Stroke): number {
-  if (stroke.length < 2) {
+function pointsLength(points: Point[]): number {
+  if (points.length < 2) {
     return 0
   }
 
   let length = 0
-  for (let index = 1; index < stroke.length; index += 1) {
-    length += distanceBetweenPoints(stroke[index - 1], stroke[index])
+  for (let index = 1; index < points.length; index += 1) {
+    length += distanceBetweenPoints(points[index - 1], points[index])
   }
+
   return length
 }
 
-function resampleStroke(stroke: Stroke, targetPoints = COMPARISON_POINTS): Stroke {
-  if (stroke.length === 0 || targetPoints <= 0) {
+function resamplePoints(points: Point[], targetPoints = COMPARISON_POINTS): Point[] {
+  if (points.length === 0 || targetPoints <= 0) {
     return []
   }
 
-  if (stroke.length === 1) {
-    return Array.from({ length: targetPoints }, () => ({ ...stroke[0] }))
+  if (points.length === 1) {
+    return Array.from({ length: targetPoints }, () => ({ ...points[0] }))
   }
 
-  const totalLength = strokeLength(stroke)
+  const totalLength = pointsLength(points)
   if (totalLength <= EPSILON) {
-    return Array.from({ length: targetPoints }, () => ({ ...stroke[0] }))
+    return Array.from({ length: targetPoints }, () => ({ ...points[0] }))
   }
 
   const spacing = totalLength / (targetPoints - 1)
-  const sampled: Stroke = [{ ...stroke[0] }]
+  const sampled: Point[] = [{ ...points[0] }]
 
-  let previous = { ...stroke[0] }
+  let previous = { ...points[0] }
   let accumulated = 0
 
-  for (let index = 1; index < stroke.length; index += 1) {
-    const current = stroke[index]
+  for (let index = 1; index < points.length; index += 1) {
+    const current = points[index]
     let segmentLength = distanceBetweenPoints(previous, current)
 
     while (accumulated + segmentLength >= spacing) {
@@ -99,7 +100,7 @@ function resampleStroke(stroke: Stroke, targetPoints = COMPARISON_POINTS): Strok
     previous = current
   }
 
-  const tailPoint = { ...stroke[stroke.length - 1] }
+  const tailPoint = { ...points[points.length - 1] }
   while (sampled.length < targetPoints) {
     sampled.push(tailPoint)
   }
@@ -107,15 +108,19 @@ function resampleStroke(stroke: Stroke, targetPoints = COMPARISON_POINTS): Strok
   return sampled
 }
 
+function normalizedSample(stroke: Stroke): Point[] {
+  return resamplePoints(normalizePoints(stroke.points))
+}
+
 export function compareStrokes(strokeA: Stroke, strokeB: Stroke): number {
-  if (strokeA.length === 0 || strokeB.length === 0) {
+  if (strokeA.points.length === 0 || strokeB.points.length === 0) {
     return 0
   }
 
   // This point-to-point strategy is intentionally simple, so DTW can replace
   // it later without changing the external compareStrokes API.
-  const normalizedA = resampleStroke(normalizeStroke(strokeA))
-  const normalizedB = resampleStroke(normalizeStroke(strokeB))
+  const normalizedA = normalizedSample(strokeA)
+  const normalizedB = normalizedSample(strokeB)
 
   const comparisonLength = Math.min(normalizedA.length, normalizedB.length)
   if (comparisonLength === 0) {

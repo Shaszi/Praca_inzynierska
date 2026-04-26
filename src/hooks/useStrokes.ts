@@ -9,18 +9,19 @@ type UseStrokesResult = {
   lastStrokeDurationMs: number | null
   setCurrentStrokePointCount: (count: number) => void
   replaceStrokes: (nextStrokes: Stroke[]) => void
+  transformStrokes: (transformer: (previous: Stroke[]) => Stroke[]) => void
   addStroke: (stroke: Stroke) => void
   undoStroke: () => void
   clearStrokes: () => void
 }
 
 function calculateDuration(stroke: Stroke): number {
-  if (stroke.length < 2) {
+  if (stroke.points.length < 2) {
     return 0
   }
 
-  const firstTimestamp = stroke[0].timestamp
-  const lastTimestamp = stroke[stroke.length - 1].timestamp
+  const firstTimestamp = stroke.points[0].timestamp
+  const lastTimestamp = stroke.points[stroke.points.length - 1].timestamp
   return Math.max(0, lastTimestamp - firstTimestamp)
 }
 
@@ -35,8 +36,16 @@ export function useStrokes(initialStrokes: Stroke[] = []): UseStrokesResult {
     setLastStrokeDurationMs(null)
   }, [])
 
+  const transformStrokes = useCallback((transformer: (previous: Stroke[]) => Stroke[]) => {
+    setStrokes((previousStrokes) => cloneStrokes(transformer(previousStrokes)))
+  }, [])
+
   const addStroke = useCallback((stroke: Stroke) => {
-    const nextStroke = stroke.map((point) => ({ ...point }))
+    const nextStroke: Stroke = {
+      brushSize: stroke.brushSize,
+      points: stroke.points.map((point) => ({ ...point })),
+    }
+
     setStrokes((previousStrokes) => [...previousStrokes, nextStroke])
     setLastStrokeDurationMs(calculateDuration(nextStroke))
     setCurrentStrokePointCount(0)
@@ -61,6 +70,7 @@ export function useStrokes(initialStrokes: Stroke[] = []): UseStrokesResult {
     lastStrokeDurationMs,
     setCurrentStrokePointCount,
     replaceStrokes,
+    transformStrokes,
     addStroke,
     undoStroke,
     clearStrokes,

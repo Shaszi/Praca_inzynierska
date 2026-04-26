@@ -8,16 +8,16 @@ const navItems = [
 
 export function TopNavigation() {
   return (
-    <header className="border-b border-slate-800/80 bg-slate-950/80 backdrop-blur">
+    <header className="border-b border-slate-200/80 bg-white/90 backdrop-blur">
       <div className="mx-auto flex w-full max-w-7xl items-center justify-between px-4 py-3 md:px-6">
         <div>
-          <p className="text-xs uppercase tracking-[0.28em] text-slate-400">
+          <p className="text-xs uppercase tracking-[0.28em] text-slate-500">
             Drawing Trainer
           </p>
-          <h1 className="text-lg font-semibold text-slate-100">Studio</h1>
+          <h1 className="text-lg font-semibold text-slate-900">Studio</h1>
         </div>
 
-        <nav className="flex items-center gap-2 rounded-xl border border-slate-700/80 bg-slate-900/70 p-1">
+        <nav className="flex items-center gap-2 rounded-xl border border-slate-300 bg-slate-50 p-1">
           {navItems.map((item) => (
             <NavLink
               key={item.to}
@@ -27,8 +27,8 @@ export function TopNavigation() {
                 [
                   'rounded-lg px-3 py-1.5 text-sm font-medium transition',
                   isActive
-                    ? 'bg-cyan-500/20 text-cyan-200'
-                    : 'text-slate-300 hover:bg-slate-800 hover:text-slate-100',
+                    ? 'bg-sky-100 text-sky-700'
+                    : 'text-slate-600 hover:bg-white hover:text-slate-900',
                 ].join(' ')
               }
             >

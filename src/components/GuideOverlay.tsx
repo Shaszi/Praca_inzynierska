@@ -14,10 +14,10 @@ export function GuideOverlay({ guide }: GuideOverlayProps) {
             y1="50"
             x2="88"
             y2="50"
-            stroke="#38bdf8"
+            stroke="#0ea5e9"
             strokeWidth="1"
             strokeDasharray="3 2"
-            opacity="0.7"
+            opacity="0.45"
           />
         ) : (
           <circle
@@ -25,10 +25,10 @@ export function GuideOverlay({ guide }: GuideOverlayProps) {
             cy="50"
             r="24"
             fill="none"
-            stroke="#38bdf8"
+            stroke="#0ea5e9"
             strokeWidth="1"
             strokeDasharray="3 2"
-            opacity="0.7"
+            opacity="0.45"
           />
         )}
       </svg>

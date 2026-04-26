@@ -1,18 +1,22 @@
-import { useDrawingCanvas } from '../hooks/useDrawingCanvas'
+import { useCanvas } from '../hooks/useCanvas'
 import type { GuideType, Stroke } from '../types/drawing'
 import { GuideOverlay } from './GuideOverlay'
 
 type DrawingCanvasProps = {
-  strokes: Stroke[]
+  userStrokes: Stroke[]
+  referenceStrokes?: Stroke[]
   brushSize: number
   onStrokeComplete: (stroke: Stroke) => void
+  onCurrentStrokePointCountChange?: (count: number) => void
   guide?: GuideType | null
 }
 
 export function DrawingCanvas({
-  strokes,
+  userStrokes,
+  referenceStrokes = [],
   brushSize,
   onStrokeComplete,
+  onCurrentStrokePointCountChange,
   guide = null,
 }: DrawingCanvasProps) {
   const {
@@ -21,16 +25,18 @@ export function DrawingCanvas({
     handlePointerDown,
     handlePointerMove,
     handlePointerUp,
-  } = useDrawingCanvas({
-    strokes,
+  } = useCanvas({
+    userStrokes,
+    referenceStrokes,
     brushSize,
     onStrokeComplete,
+    onCurrentStrokePointCountChange,
   })
 
   return (
     <div
       ref={containerRef}
-      className="relative h-full w-full overflow-hidden rounded-2xl border border-slate-700/60 bg-slate-900"
+      className="relative h-full w-full overflow-hidden rounded-2xl border border-slate-300 bg-slate-100 shadow-inner"
     >
       {guide ? <GuideOverlay guide={guide} /> : null}
       <canvas

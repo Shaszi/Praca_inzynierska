@@ -5,10 +5,10 @@ import { DrawingCanvas } from '../components/DrawingCanvas'
 import { FeedbackPanel } from '../components/FeedbackPanel'
 import { ReferenceSelector } from '../components/ReferenceSelector'
 import { useStrokes } from '../hooks/useStrokes'
+import { referenceService } from '../services/referenceService'
 import type { GuideType, ReferenceDrawing, Stroke } from '../types/drawing'
 import { compareStrokes } from '../utils/analysis'
 import { getFeedback } from '../utils/feedback'
-import { loadReferencesFromStorage } from '../utils/storage'
 
 export function PracticePage() {
   const {
@@ -26,13 +26,14 @@ export function PracticePage() {
   const [guide, setGuide] = useState<GuideType>('line')
   const [feedback, setFeedback] = useState('Draw over the guide to get feedback.')
   const [similarity, setSimilarity] = useState<number | null>(null)
+  const [initialReferencesLoad] = useState(() => referenceService.loadReferences())
   const [savedReferences, setSavedReferences] = useState<ReferenceDrawing[]>(
-    () => loadReferencesFromStorage().data,
+    initialReferencesLoad.data,
   )
   const [selectedReferenceId, setSelectedReferenceId] = useState('')
   const [isLoadingReferences, setIsLoadingReferences] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(
-    () => loadReferencesFromStorage().error,
+    initialReferencesLoad.error,
   )
 
   const selectedReference = useMemo(
@@ -47,7 +48,7 @@ export function PracticePage() {
 
   const refreshReferences = useCallback(() => {
     setIsLoadingReferences(true)
-    const { data, error } = loadReferencesFromStorage()
+    const { data, error } = referenceService.loadReferences()
     setSavedReferences(data)
     setErrorMessage(error)
 

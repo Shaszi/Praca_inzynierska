@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
 import { DebugPanel } from '../components/DebugPanel'
-import { DrawingCanvas } from '../components/DrawingCanvas'
-import { ReferenceManager } from '../components/ReferenceManager'
-import { TeacherStatusPanel } from '../components/TeacherStatusPanel'
-import { Toolbar } from '../components/Toolbar'
-import { useReferences } from '../hooks/useReferences'
+import { DrawingCanvas } from '../features/canvas/components/DrawingCanvas'
+import { ReferenceManager } from '../features/teacher/components/ReferenceManager'
+import { TeacherStatusPanel } from '../features/teacher/components/TeacherStatusPanel'
+import { Toolbar } from '../features/teacher/components/Toolbar'
+import { useReferences } from '../features/teacher/hooks/useReferences'
 import { useStrokes } from '../hooks/useStrokes'
 import type { Point, Tool } from '../types/drawing'
-import { erasePointsFromStrokes } from '../utils/eraser'
+import { erasePointsFromStrokes } from '../features/canvas/utils/eraser'
 
 export function TeacherPage() {
   const [brushSize, setBrushSize] = useState(8)

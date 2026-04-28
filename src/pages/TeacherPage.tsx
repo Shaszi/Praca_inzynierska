@@ -1,18 +1,18 @@
-import { useCallback, useEffect, useState } from 'react'
-import { DebugPanel } from '../components/DebugPanel'
-import { DrawingCanvas } from '../features/canvas/components/DrawingCanvas'
-import { ReferenceManager } from '../features/teacher/components/ReferenceManager'
-import { TeacherStatusPanel } from '../features/teacher/components/TeacherStatusPanel'
-import { Toolbar } from '../features/teacher/components/Toolbar'
-import { useReferences } from '../features/teacher/hooks/useReferences'
-import { useStrokes } from '../hooks/useStrokes'
-import type { Point, Tool } from '../types/drawing'
-import { erasePointsFromStrokes } from '../features/canvas/utils/eraser'
+import { useCallback, useEffect, useState } from "react";
+import { DebugPanel } from "../components/DebugPanel";
+import { DrawingCanvas } from "../features/canvas/components/DrawingCanvas";
+import { ReferenceManager } from "../features/teacher/components/ReferenceManager";
+import { TeacherStatusPanel } from "../features/teacher/components/TeacherStatusPanel";
+import { Toolbar } from "../features/teacher/components/Toolbar";
+import { useReferences } from "../features/teacher/hooks/useReferences";
+import { useStrokes } from "../hooks/useStrokes";
+import type { Point, Tool } from "../types/drawing";
+import { eraseAtPoint } from "../utils/eraser";
 
 export function TeacherPage() {
-  const [brushSize, setBrushSize] = useState(8)
-  const [tool, setTool] = useState<Tool>('brush')
-  const [isFullscreen, setIsFullscreen] = useState(false)
+  const [brushSize, setBrushSize] = useState(8);
+  const [tool, setTool] = useState<Tool>("brush");
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   const {
     strokes,
@@ -25,7 +25,7 @@ export function TeacherPage() {
     addStroke,
     undoStroke,
     clearStrokes,
-  } = useStrokes()
+  } = useStrokes();
 
   const {
     references,
@@ -41,51 +41,51 @@ export function TeacherPage() {
     errorMessage,
     isSaving,
     isImporting,
-  } = useReferences()
+  } = useReferences();
 
   const handleSaveReference = useCallback(() => {
-    saveReference(strokes)
-  }, [saveReference, strokes])
+    saveReference(strokes);
+  }, [saveReference, strokes]);
 
   const handleLoadReference = useCallback(() => {
-    const loadedStrokes = loadReference()
+    const loadedStrokes = loadReference();
     if (loadedStrokes) {
-      replaceStrokes(loadedStrokes)
+      replaceStrokes(loadedStrokes);
     }
-  }, [loadReference, replaceStrokes])
+  }, [loadReference, replaceStrokes]);
 
   const handleEraseAtPoint = useCallback(
     (point: Point) => {
       transformStrokes((previousStrokes) =>
-        erasePointsFromStrokes(previousStrokes, point, brushSize),
-      )
+        eraseAtPoint(previousStrokes, point.x, point.y, brushSize),
+      );
     },
     [brushSize, transformStrokes],
-  )
+  );
 
   useEffect(() => {
     if (!isFullscreen) {
-      return
+      return;
     }
 
     const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setIsFullscreen(false)
+      if (event.key === "Escape") {
+        setIsFullscreen(false);
       }
-    }
+    };
 
-    window.addEventListener('keydown', handleEscape)
+    window.addEventListener("keydown", handleEscape);
     return () => {
-      window.removeEventListener('keydown', handleEscape)
-    }
-  }, [isFullscreen])
+      window.removeEventListener("keydown", handleEscape);
+    };
+  }, [isFullscreen]);
 
   return (
     <section
       className={[
-        'flex min-h-0 w-full flex-1 gap-4',
-        isFullscreen ? 'fixed inset-0 z-50 bg-slate-100 p-4' : 'relative',
-      ].join(' ')}
+        "flex min-h-0 w-full flex-1 gap-4",
+        isFullscreen ? "fixed inset-0 z-50 bg-slate-100 p-4" : "relative",
+      ].join(" ")}
     >
       <Toolbar
         tool={tool}
@@ -138,5 +138,5 @@ export function TeacherPage() {
         />
       </div>
     </section>
-  )
+  );
 }

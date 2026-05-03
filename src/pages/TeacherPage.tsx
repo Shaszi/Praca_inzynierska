@@ -12,7 +12,7 @@ import { eraseAtPoint } from "../utils/eraser";
 export function TeacherPage() {
   const [brushSize, setBrushSize] = useState(8);
   const [tool, setTool] = useState<Tool>("brush");
-  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isCanvasFullscreen, setIsCanvasFullscreen] = useState(false);
 
   const {
     strokes,
@@ -64,13 +64,13 @@ export function TeacherPage() {
   );
 
   useEffect(() => {
-    if (!isFullscreen) {
+    if (!isCanvasFullscreen) {
       return;
     }
 
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        setIsFullscreen(false);
+        setIsCanvasFullscreen(false);
       }
     };
 
@@ -78,42 +78,53 @@ export function TeacherPage() {
     return () => {
       window.removeEventListener("keydown", handleEscape);
     };
-  }, [isFullscreen]);
+  }, [isCanvasFullscreen]);
 
   return (
     <section
       className={[
-        "flex min-h-0 w-full flex-1 gap-4",
-        isFullscreen ? "fixed inset-0 z-50 bg-slate-100 p-4" : "relative",
+        "flex gap-4",
+        isCanvasFullscreen
+          ? "fixed inset-0 z-50 h-screen w-screen bg-slate-100 p-4"
+          : "min-h-0 w-full flex-1",
       ].join(" ")}
     >
       <Toolbar
         tool={tool}
         brushSize={brushSize}
-        isFullscreen={isFullscreen}
+        isCanvasFullscreen={isCanvasFullscreen}
         onToolChange={setTool}
         onBrushSizeChange={setBrushSize}
         onUndo={undoStroke}
         onClear={clearStrokes}
-        onToggleFullscreen={() => setIsFullscreen((current) => !current)}
+        onToggleCanvasFullscreen={() =>
+          setIsCanvasFullscreen((current) => !current)
+        }
       />
 
-      <div className="flex min-h-0 flex-1 flex-col gap-4">
-        <ReferenceManager
-          references={references}
-          selectedReferenceId={selectedReferenceId}
-          onSelectReferenceId={setSelectedReferenceId}
-          onSaveReference={handleSaveReference}
-          onLoadReference={handleLoadReference}
-          onDeleteReference={deleteReference}
-          onExportReference={exportReference}
-          onImportReference={importReference}
-          isSaving={isSaving}
-          isImporting={isImporting}
-          hasSelectedReference={selectedReference !== null}
-        />
+      <div
+        className={[
+          "flex min-h-0 flex-1 flex-col",
+          isCanvasFullscreen ? "w-full h-full" : "gap-4",
+        ].join(" ")}
+      >
+        {!isCanvasFullscreen ? (
+          <ReferenceManager
+            references={references}
+            selectedReferenceId={selectedReferenceId}
+            onSelectReferenceId={setSelectedReferenceId}
+            onSaveReference={handleSaveReference}
+            onLoadReference={handleLoadReference}
+            onDeleteReference={deleteReference}
+            onExportReference={exportReference}
+            onImportReference={importReference}
+            isSaving={isSaving}
+            isImporting={isImporting}
+            hasSelectedReference={selectedReference !== null}
+          />
+        ) : null}
 
-        <div className="min-h-0 flex-1">
+        <div className={isCanvasFullscreen ? "min-h-0 flex-1 w-full h-full" : "min-h-0 flex-1"}>
           <DrawingCanvas
             userStrokes={strokes}
             brushSize={brushSize}
@@ -125,17 +136,21 @@ export function TeacherPage() {
           />
         </div>
 
-        <DebugPanel
-          strokeCount={strokeCount}
-          currentStrokePointCount={currentStrokePointCount}
-          lastStrokeDurationMs={lastStrokeDurationMs}
-        />
+        {!isCanvasFullscreen ? (
+          <DebugPanel
+            strokeCount={strokeCount}
+            currentStrokePointCount={currentStrokePointCount}
+            lastStrokeDurationMs={lastStrokeDurationMs}
+          />
+        ) : null}
 
-        <TeacherStatusPanel
-          statusMessage={statusMessage}
-          errorMessage={errorMessage}
-          referencesCount={references.length}
-        />
+        {!isCanvasFullscreen ? (
+          <TeacherStatusPanel
+            statusMessage={statusMessage}
+            errorMessage={errorMessage}
+            referencesCount={references.length}
+          />
+        ) : null}
       </div>
     </section>
   );

@@ -5,6 +5,10 @@ type Segment = { start: Point; end: Point };
 const EPSILON = 0.0001;
 const MIN_FRAGMENT_LENGTH = 2;
 
+function getEffectiveEraseRadius(eraserRadius: number, brushSize: number): number {
+  return eraserRadius + brushSize / 2;
+}
+
 function squaredDistance(point: Point, x: number, y: number): number {
   const dx = point.x - x;
   const dy = point.y - y;
@@ -145,6 +149,17 @@ function strokeFromFragment(brushSize: number, points: Point[]): Stroke | null {
   };
 }
 
+function shouldKeepSinglePointStroke(
+  point: Point,
+  x: number,
+  y: number,
+  eraserRadius: number,
+  brushSize: number,
+): boolean {
+  const effectiveRadius = getEffectiveEraseRadius(eraserRadius, brushSize);
+  return squaredDistance(point, x, y) > effectiveRadius * effectiveRadius;
+}
+
 export function eraseAtPoint(
   strokes: Stroke[],
   x: number,
@@ -159,6 +174,26 @@ export function eraseAtPoint(
 
   for (const stroke of strokes) {
     const sourcePoints = stroke.points;
+    const effectiveRadius = getEffectiveEraseRadius(radius, stroke.brushSize);
+
+    if (sourcePoints.length === 1) {
+      if (
+        shouldKeepSinglePointStroke(
+          sourcePoints[0],
+          x,
+          y,
+          radius,
+          stroke.brushSize,
+        )
+      ) {
+        nextStrokes.push({
+          brushSize: stroke.brushSize,
+          points: [{ ...sourcePoints[0] }],
+        });
+      }
+      continue;
+    }
+
     if (sourcePoints.length < 2) {
       continue;
     }
@@ -168,7 +203,7 @@ export function eraseAtPoint(
     for (let index = 0; index < sourcePoints.length - 1; index += 1) {
       const a = sourcePoints[index];
       const b = sourcePoints[index + 1];
-      const keptSegments = clipOutsideCircle(a, b, x, y, radius);
+      const keptSegments = clipOutsideCircle(a, b, x, y, effectiveRadius);
 
       if (keptSegments.length === 0) {
         const completedStroke = strokeFromFragment(

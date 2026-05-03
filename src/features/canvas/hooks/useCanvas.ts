@@ -232,8 +232,12 @@ export function useCanvas({
 
     const observer = new ResizeObserver(resizeCanvas);
     observer.observe(container);
+    window.addEventListener("resize", resizeCanvas);
     resizeCanvas();
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", resizeCanvas);
+    };
   }, [resizeCanvas]);
 
   useEffect(() => redrawScene(), [redrawScene]);

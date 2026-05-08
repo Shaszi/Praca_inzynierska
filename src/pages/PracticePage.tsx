@@ -2,12 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ControlBar } from '../components/ControlBar'
 import { DebugPanel } from '../components/DebugPanel'
 import { FeedbackPanel } from '../components/FeedbackPanel'
-import { DrawingCanvas } from '../features/canvas/components/DrawingCanvas'
+import { PracticeCanvas } from '../features/practice/components/PracticeCanvas'
+import { usePracticeAnalysis } from '../features/practice/hooks/usePracticeAnalysis'
+import { useReferenceGuide } from '../features/practice/hooks/useReferenceGuide'
 import { ReferenceSelector } from '../features/teacher/components/ReferenceSelector'
 import { useStrokes } from '../hooks/useStrokes'
-import { referenceService } from '../features/teacher/services/referenceService'
-import type { GuideType, ReferenceDrawing, Stroke } from '../types/drawing'
-import { compareStrokes } from '../utils/analysis'
+import type { ReferenceDrawing, Stroke } from '../types/drawing'
 import { getFeedback } from '../utils/feedback'
 
 export function PracticePage() {
@@ -26,72 +26,70 @@ export function PracticePage() {
   } = useStrokes()
 
   const [brushSize, setBrushSize] = useState(5)
-  const [guide, setGuide] = useState<GuideType>('line')
   const [feedback, setFeedback] = useState('Draw over the guide to get feedback.')
-  const [similarity, setSimilarity] = useState<number | null>(null)
-  const [initialReferencesLoad] = useState(() => referenceService.loadReferences())
-  const [savedReferences, setSavedReferences] = useState<ReferenceDrawing[]>(
-    initialReferencesLoad.data,
-  )
-  const [selectedReferenceId, setSelectedReferenceId] = useState('')
-  const [isLoadingReferences, setIsLoadingReferences] = useState(false)
-  const [errorMessage, setErrorMessage] = useState<string | null>(
-    initialReferencesLoad.error,
-  )
 
-  const selectedReference = useMemo(
+  const {
+    references: savedReferences,
+    selectedReferenceId,
+    setSelectedReferenceId,
+    activeGuide,
+    isLoadingReferences,
+    errorMessage,
+    refreshReferences,
+  } = useReferenceGuide()
+
+  const {
+    feedbackText,
+    similarityPercent,
+    activeStrokeColor,
+    analyzeActiveStroke,
+    analyzeCompletedStroke,
+    resetAnalysis,
+  } = usePracticeAnalysis(activeGuide?.strokes ?? [])
+
+  const selectedReference = useMemo<ReferenceDrawing | null>(
     () => savedReferences.find((reference) => reference.id === selectedReferenceId) ?? null,
     [savedReferences, selectedReferenceId],
   )
 
-  const selectedReferenceStroke = useMemo(
-    () => selectedReference?.strokes[0] ?? null,
-    [selectedReference],
-  )
-
-  const refreshReferences = useCallback(() => {
-    setIsLoadingReferences(true)
-    const { data, error } = referenceService.loadReferences()
-    setSavedReferences(data)
-    setErrorMessage(error)
-
-    if (!data.some((reference) => reference.id === selectedReferenceId)) {
-      setSelectedReferenceId('')
-      setSimilarity(null)
-    }
-
-    setIsLoadingReferences(false)
-  }, [selectedReferenceId])
-
   const handleStrokeComplete = useCallback(
     (stroke: Stroke) => {
       addStroke(stroke)
-      setFeedback(getFeedback(stroke))
-
-      if (selectedReferenceStroke) {
-        setSimilarity(compareStrokes(stroke, selectedReferenceStroke))
-      } else {
-        setSimilarity(null)
-      }
+      const shapeFeedback = getFeedback(stroke)
+      const analysisResult = analyzeCompletedStroke(stroke)
+      setFeedback(analysisResult?.feedback ?? shapeFeedback)
     },
-    [addStroke, selectedReferenceStroke],
+    [addStroke, analyzeCompletedStroke],
   )
 
   const handleUndo = useCallback(() => {
     undoStroke()
-    setSimilarity(null)
-  }, [undoStroke])
+    resetAnalysis()
+  }, [resetAnalysis, undoStroke])
 
   const handleClear = useCallback(() => {
     clearStrokes()
     setFeedback('Canvas cleared. Draw over the guide to get feedback.')
-    setSimilarity(null)
-  }, [clearStrokes])
+    resetAnalysis()
+  }, [clearStrokes, resetAnalysis])
 
   const handleRedo = useCallback(() => {
     redoStroke()
-    setSimilarity(null)
-  }, [redoStroke])
+    resetAnalysis()
+  }, [redoStroke, resetAnalysis])
+
+  useEffect(() => {
+    if (!selectedReferenceId) {
+      setFeedback('Draw over the guide to get feedback.')
+      return
+    }
+
+    setFeedback(feedbackText)
+  }, [feedbackText, selectedReferenceId])
+
+  useEffect(() => {
+    resetAnalysis()
+  }, [activeGuide?.id, resetAnalysis])
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -131,14 +129,6 @@ export function PracticePage() {
           <>
             <button
               type="button"
-              onClick={() => setGuide((current) => (current === 'line' ? 'circle' : 'line'))}
-              className="rounded-lg border border-sky-300 bg-sky-50 px-3 py-1.5 text-sm font-medium text-sky-700 transition hover:border-sky-400"
-            >
-              Toggle Guide
-            </button>
-
-            <button
-              type="button"
               onClick={refreshReferences}
               disabled={isLoadingReferences}
               className="rounded-lg border border-slate-300 bg-slate-50 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:border-slate-400 disabled:cursor-not-allowed disabled:opacity-60"
@@ -151,7 +141,10 @@ export function PracticePage() {
 
       <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-slate-300 bg-white p-3 shadow-sm">
         <p className="text-sm text-slate-600">
-          Guide: <span className="font-semibold text-slate-900">{guide}</span>
+          Guide:{' '}
+          <span className="font-semibold text-slate-900">
+            {selectedReference ? selectedReference.name : 'No guide loaded'}
+          </span>
         </p>
         <ReferenceSelector
           references={savedReferences}
@@ -164,13 +157,14 @@ export function PracticePage() {
       </div>
 
       <div className="min-h-0 flex-1">
-        <DrawingCanvas
+        <PracticeCanvas
           userStrokes={strokes}
-          referenceStrokes={selectedReference?.strokes ?? []}
+          referenceStrokes={activeGuide?.strokes ?? []}
           brushSize={brushSize}
+          userStrokeColor={activeStrokeColor}
           onStrokeComplete={handleStrokeComplete}
           onCurrentStrokePointCountChange={setCurrentStrokePointCount}
-          guide={guide}
+          onActiveStrokeChange={analyzeActiveStroke}
         />
       </div>
 
@@ -180,7 +174,7 @@ export function PracticePage() {
         lastStrokeDurationMs={lastStrokeDurationMs}
       />
 
-      <FeedbackPanel feedback={feedback} similarity={similarity} />
+      <FeedbackPanel feedback={feedback} similarity={similarityPercent} />
     </section>
   )
 }

@@ -16,6 +16,7 @@ type UseCanvasOptions = {
   onEraseStart?: () => void;
   onEraseEnd?: () => void;
   onCurrentStrokePointCountChange?: (count: number) => void;
+  onActiveStrokeChange?: (stroke: Stroke | null) => void;
 };
 
 type UseCanvasResult = {
@@ -70,6 +71,7 @@ export function useCanvas({
   onEraseStart,
   onEraseEnd,
   onCurrentStrokePointCountChange,
+  onActiveStrokeChange,
 }: UseCanvasOptions): UseCanvasResult {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -152,9 +154,14 @@ export function useCanvas({
       activePointsRef.current = [point];
       lastPointerPointRef.current = point;
       onCurrentStrokePointCountChange?.(1);
+      onActiveStrokeChange?.({
+        points: activePointsRef.current.map((currentPoint) => ({ ...currentPoint })),
+        brushSize: activeBrushSizeRef.current,
+      });
       redrawScene();
     },
     [
+      onActiveStrokeChange,
       brushSize,
       onCurrentStrokePointCountChange,
       onEraseAtPoint,
@@ -203,9 +210,13 @@ export function useCanvas({
       }
       lastPointerPointRef.current = point;
       onCurrentStrokePointCountChange?.(points.length);
+      onActiveStrokeChange?.({
+        points: points.map((currentPoint) => ({ ...currentPoint })),
+        brushSize: activeBrushSizeRef.current,
+      });
       redrawScene();
     },
-    [onCurrentStrokePointCountChange, onEraseAtPoint, redrawScene, tool],
+    [onActiveStrokeChange, onCurrentStrokePointCountChange, onEraseAtPoint, redrawScene, tool],
   );
 
   const onPointerUp = useCallback(
@@ -230,9 +241,11 @@ export function useCanvas({
       activePointsRef.current = [];
       lastPointerPointRef.current = null;
       onCurrentStrokePointCountChange?.(0);
+      onActiveStrokeChange?.(null);
       redrawScene();
     },
     [
+      onActiveStrokeChange,
       onCurrentStrokePointCountChange,
       onEraseEnd,
       onStrokeComplete,

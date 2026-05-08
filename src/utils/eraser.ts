@@ -5,7 +5,10 @@ type Segment = { start: Point; end: Point };
 const EPSILON = 0.0001;
 const MIN_FRAGMENT_LENGTH = 2;
 
-function getEffectiveEraseRadius(eraserRadius: number, brushSize: number): number {
+function getEffectiveEraseRadius(
+  eraserRadius: number,
+  brushSize: number,
+): number {
   return eraserRadius + brushSize / 2;
 }
 

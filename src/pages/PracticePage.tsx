@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ControlBar } from '../components/ControlBar'
 import { DebugPanel } from '../components/DebugPanel'
 import { FeedbackPanel } from '../components/FeedbackPanel'
@@ -19,7 +19,10 @@ export function PracticePage() {
     setCurrentStrokePointCount,
     addStroke,
     undoStroke,
+    redoStroke,
     clearStrokes,
+    canUndo,
+    canRedo,
   } = useStrokes()
 
   const [brushSize, setBrushSize] = useState(5)
@@ -85,13 +88,45 @@ export function PracticePage() {
     setSimilarity(null)
   }, [clearStrokes])
 
+  const handleRedo = useCallback(() => {
+    redoStroke()
+    setSimilarity(null)
+  }, [redoStroke])
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const isMetaOrCtrl = event.metaKey || event.ctrlKey
+      if (!isMetaOrCtrl) return
+
+      const key = event.key.toLowerCase()
+      const isUndo = key === 'z' && !event.shiftKey
+      const isRedo = key === 'y' || (key === 'z' && event.shiftKey)
+
+      if (isUndo && canUndo) {
+        event.preventDefault()
+        handleUndo()
+      }
+
+      if (isRedo && canRedo) {
+        event.preventDefault()
+        handleRedo()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [canRedo, canUndo, handleRedo, handleUndo])
+
   return (
     <section className="flex min-h-0 w-full flex-1 flex-col gap-4">
       <ControlBar
         brushSize={brushSize}
         onBrushSizeChange={setBrushSize}
         onUndo={handleUndo}
+        onRedo={handleRedo}
         onClear={handleClear}
+        canUndo={canUndo}
+        canRedo={canRedo}
         extraControls={
           <>
             <button

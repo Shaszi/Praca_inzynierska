@@ -14,6 +14,8 @@ type DrawingCanvasProps = {
   tool?: Tool
   onStrokeComplete: (stroke: Stroke) => void
   onEraseAtPoint?: (point: Point) => void
+  onEraseStart?: () => void
+  onEraseEnd?: () => void
   onCurrentStrokePointCountChange?: (count: number) => void
   showCursorPreview?: boolean
   guide?: GuideType | null
@@ -26,6 +28,8 @@ export function DrawingCanvas({
   tool = 'brush',
   onStrokeComplete,
   onEraseAtPoint,
+  onEraseStart,
+  onEraseEnd,
   onCurrentStrokePointCountChange,
   showCursorPreview = false,
   guide = null,
@@ -43,6 +47,8 @@ export function DrawingCanvas({
     tool,
     onStrokeComplete,
     onEraseAtPoint,
+    onEraseStart,
+    onEraseEnd,
     onCurrentStrokePointCountChange,
   })
 

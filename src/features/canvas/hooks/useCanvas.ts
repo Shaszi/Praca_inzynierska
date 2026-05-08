@@ -13,6 +13,8 @@ type UseCanvasOptions = {
   referenceStrokeColor?: string;
   onStrokeComplete: (stroke: Stroke) => void;
   onEraseAtPoint?: (point: Point) => void;
+  onEraseStart?: () => void;
+  onEraseEnd?: () => void;
   onCurrentStrokePointCountChange?: (count: number) => void;
 };
 
@@ -65,6 +67,8 @@ export function useCanvas({
   referenceStrokeColor = "#cbd5e1",
   onStrokeComplete,
   onEraseAtPoint,
+  onEraseStart,
+  onEraseEnd,
   onCurrentStrokePointCountChange,
 }: UseCanvasOptions): UseCanvasResult {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -138,6 +142,7 @@ export function useCanvas({
 
       const point = createPointFromPointerEvent(event, canvas);
       if (tool === "eraser") {
+        onEraseStart?.();
         lastPointerPointRef.current = point;
         onEraseAtPoint?.(point);
         return;
@@ -153,6 +158,7 @@ export function useCanvas({
       brushSize,
       onCurrentStrokePointCountChange,
       onEraseAtPoint,
+      onEraseStart,
       redrawScene,
       tool,
     ],
@@ -217,13 +223,22 @@ export function useCanvas({
           brushSize: activeBrushSizeRef.current,
         });
       }
+      if (tool === "eraser") {
+        onEraseEnd?.();
+      }
 
       activePointsRef.current = [];
       lastPointerPointRef.current = null;
       onCurrentStrokePointCountChange?.(0);
       redrawScene();
     },
-    [onCurrentStrokePointCountChange, onStrokeComplete, redrawScene, tool],
+    [
+      onCurrentStrokePointCountChange,
+      onEraseEnd,
+      onStrokeComplete,
+      redrawScene,
+      tool,
+    ],
   );
 
   useEffect(() => {

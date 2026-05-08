@@ -21,10 +21,15 @@ export function TeacherPage() {
     lastStrokeDurationMs,
     setCurrentStrokePointCount,
     replaceStrokes,
-    transformStrokes,
+    beginEraseSession,
+    eraseInSession,
+    endEraseSession,
     addStroke,
     undoStroke,
+    redoStroke,
     clearStrokes,
+    canUndo,
+    canRedo,
   } = useStrokes();
 
   const {
@@ -56,12 +61,20 @@ export function TeacherPage() {
 
   const handleEraseAtPoint = useCallback(
     (point: Point) => {
-      transformStrokes((previousStrokes) =>
+      eraseInSession((previousStrokes) =>
         eraseAtPoint(previousStrokes, point.x, point.y, brushSize),
       );
     },
-    [brushSize, transformStrokes],
+    [brushSize, eraseInSession],
   );
+
+  const handleUndo = useCallback(() => {
+    undoStroke();
+  }, [undoStroke]);
+
+  const handleRedo = useCallback(() => {
+    redoStroke();
+  }, [redoStroke]);
 
   useEffect(() => {
     if (!isCanvasFullscreen) {
@@ -80,6 +93,30 @@ export function TeacherPage() {
     };
   }, [isCanvasFullscreen]);
 
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const isMetaOrCtrl = event.metaKey || event.ctrlKey;
+      if (!isMetaOrCtrl) return;
+
+      const key = event.key.toLowerCase();
+      const isUndo = key === "z" && !event.shiftKey;
+      const isRedo = key === "y" || (key === "z" && event.shiftKey);
+
+      if (isUndo && canUndo) {
+        event.preventDefault();
+        undoStroke();
+      }
+
+      if (isRedo && canRedo) {
+        event.preventDefault();
+        redoStroke();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [canRedo, canUndo, redoStroke, undoStroke]);
+
   return (
     <section
       className={[
@@ -95,8 +132,11 @@ export function TeacherPage() {
         isCanvasFullscreen={isCanvasFullscreen}
         onToolChange={setTool}
         onBrushSizeChange={setBrushSize}
-        onUndo={undoStroke}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
         onClear={clearStrokes}
+        canUndo={canUndo}
+        canRedo={canRedo}
         onToggleCanvasFullscreen={() =>
           setIsCanvasFullscreen((current) => !current)
         }
@@ -130,7 +170,9 @@ export function TeacherPage() {
             brushSize={brushSize}
             tool={tool}
             onStrokeComplete={addStroke}
+            onEraseStart={beginEraseSession}
             onEraseAtPoint={handleEraseAtPoint}
+            onEraseEnd={endEraseSession}
             onCurrentStrokePointCountChange={setCurrentStrokePointCount}
             showCursorPreview
           />

@@ -4,7 +4,10 @@ type ControlBarProps = {
   brushSize: number
   onBrushSizeChange: (size: number) => void
   onUndo: () => void
+  onRedo: () => void
   onClear: () => void
+  canUndo: boolean
+  canRedo: boolean
   extraControls?: ReactNode
 }
 
@@ -12,7 +15,10 @@ export function ControlBar({
   brushSize,
   onBrushSizeChange,
   onUndo,
+  onRedo,
   onClear,
+  canUndo,
+  canRedo,
   extraControls,
 }: ControlBarProps) {
   return (
@@ -34,9 +40,26 @@ export function ControlBar({
       <button
         type="button"
         onClick={onUndo}
-        className="rounded-lg border border-slate-300 bg-slate-50 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:border-slate-400"
+        disabled={!canUndo}
+        className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition ${
+          canUndo
+            ? 'border-slate-300 bg-slate-50 text-slate-700 hover:border-slate-400'
+            : 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400'
+        }`}
       >
         Undo
+      </button>
+      <button
+        type="button"
+        onClick={onRedo}
+        disabled={!canRedo}
+        className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition ${
+          canRedo
+            ? 'border-slate-300 bg-slate-50 text-slate-700 hover:border-slate-400'
+            : 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400'
+        }`}
+      >
+        Redo
       </button>
 
       <button

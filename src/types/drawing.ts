@@ -13,6 +13,11 @@ export type Tool = 'brush' | 'eraser'
 
 export type GuideType = 'line' | 'circle'
 
+export type Guide = {
+  id: string
+  strokes: Stroke[]
+}
+
 export type ReferenceDrawing = {
   id: string
   name: string

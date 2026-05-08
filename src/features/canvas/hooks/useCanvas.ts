@@ -13,7 +13,10 @@ type UseCanvasOptions = {
   referenceStrokeColor?: string;
   onStrokeComplete: (stroke: Stroke) => void;
   onEraseAtPoint?: (point: Point) => void;
+  onEraseStart?: () => void;
+  onEraseEnd?: () => void;
   onCurrentStrokePointCountChange?: (count: number) => void;
+  onActiveStrokeChange?: (stroke: Stroke | null) => void;
 };
 
 type UseCanvasResult = {
@@ -65,7 +68,10 @@ export function useCanvas({
   referenceStrokeColor = "#cbd5e1",
   onStrokeComplete,
   onEraseAtPoint,
+  onEraseStart,
+  onEraseEnd,
   onCurrentStrokePointCountChange,
+  onActiveStrokeChange,
 }: UseCanvasOptions): UseCanvasResult {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -138,6 +144,7 @@ export function useCanvas({
 
       const point = createPointFromPointerEvent(event, canvas);
       if (tool === "eraser") {
+        onEraseStart?.();
         lastPointerPointRef.current = point;
         onEraseAtPoint?.(point);
         return;
@@ -147,12 +154,18 @@ export function useCanvas({
       activePointsRef.current = [point];
       lastPointerPointRef.current = point;
       onCurrentStrokePointCountChange?.(1);
+      onActiveStrokeChange?.({
+        points: activePointsRef.current.map((currentPoint) => ({ ...currentPoint })),
+        brushSize: activeBrushSizeRef.current,
+      });
       redrawScene();
     },
     [
+      onActiveStrokeChange,
       brushSize,
       onCurrentStrokePointCountChange,
       onEraseAtPoint,
+      onEraseStart,
       redrawScene,
       tool,
     ],
@@ -197,9 +210,13 @@ export function useCanvas({
       }
       lastPointerPointRef.current = point;
       onCurrentStrokePointCountChange?.(points.length);
+      onActiveStrokeChange?.({
+        points: points.map((currentPoint) => ({ ...currentPoint })),
+        brushSize: activeBrushSizeRef.current,
+      });
       redrawScene();
     },
-    [onCurrentStrokePointCountChange, onEraseAtPoint, redrawScene, tool],
+    [onActiveStrokeChange, onCurrentStrokePointCountChange, onEraseAtPoint, redrawScene, tool],
   );
 
   const onPointerUp = useCallback(
@@ -217,13 +234,24 @@ export function useCanvas({
           brushSize: activeBrushSizeRef.current,
         });
       }
+      if (tool === "eraser") {
+        onEraseEnd?.();
+      }
 
       activePointsRef.current = [];
       lastPointerPointRef.current = null;
       onCurrentStrokePointCountChange?.(0);
+      onActiveStrokeChange?.(null);
       redrawScene();
     },
-    [onCurrentStrokePointCountChange, onStrokeComplete, redrawScene, tool],
+    [
+      onActiveStrokeChange,
+      onCurrentStrokePointCountChange,
+      onEraseEnd,
+      onStrokeComplete,
+      redrawScene,
+      tool,
+    ],
   );
 
   useEffect(() => {

@@ -5,6 +5,7 @@ type DrawStrokeOptions = {
   dpr: number
   alpha?: number
   lineWidthOverride?: number
+  dashPattern?: number[]
 }
 
 type RenderSceneOptions = {
@@ -33,6 +34,7 @@ function configureContext(
   context.fillStyle = color
   context.lineWidth = lineWidth
   context.globalAlpha = alpha
+  context.setLineDash([])
 }
 
 export function drawStroke(
@@ -48,6 +50,9 @@ export function drawStroke(
   const alpha = options.alpha ?? 1
 
   configureContext(context, options.dpr, options.color, lineWidth, alpha)
+  if (options.dashPattern) {
+    context.setLineDash(options.dashPattern)
+  }
 
   if (stroke.points.length === 1) {
     context.beginPath()
@@ -81,7 +86,8 @@ export function renderCanvasScene({
     drawStroke(context, stroke, {
       color: referenceStrokeColor,
       dpr,
-      alpha: 0.9,
+      alpha: 0.5,
+      dashPattern: [7, 6],
     })
   }
 

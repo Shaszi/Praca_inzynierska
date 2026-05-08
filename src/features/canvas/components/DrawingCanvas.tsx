@@ -14,9 +14,14 @@ type DrawingCanvasProps = {
   tool?: Tool
   onStrokeComplete: (stroke: Stroke) => void
   onEraseAtPoint?: (point: Point) => void
+  onEraseStart?: () => void
+  onEraseEnd?: () => void
   onCurrentStrokePointCountChange?: (count: number) => void
+  onActiveStrokeChange?: (stroke: Stroke | null) => void
   showCursorPreview?: boolean
   guide?: GuideType | null
+  userStrokeColor?: string
+  referenceStrokeColor?: string
 }
 
 export function DrawingCanvas({
@@ -26,9 +31,14 @@ export function DrawingCanvas({
   tool = 'brush',
   onStrokeComplete,
   onEraseAtPoint,
+  onEraseStart,
+  onEraseEnd,
   onCurrentStrokePointCountChange,
+  onActiveStrokeChange,
   showCursorPreview = false,
   guide = null,
+  userStrokeColor,
+  referenceStrokeColor,
 }: DrawingCanvasProps) {
   const [cursorPreview, setCursorPreview] = useState<CursorPreview>({
     x: 0,
@@ -43,7 +53,12 @@ export function DrawingCanvas({
     tool,
     onStrokeComplete,
     onEraseAtPoint,
+    onEraseStart,
+    onEraseEnd,
     onCurrentStrokePointCountChange,
+    onActiveStrokeChange,
+    userStrokeColor,
+    referenceStrokeColor,
   })
 
   const updateCursorPreview = useCallback(

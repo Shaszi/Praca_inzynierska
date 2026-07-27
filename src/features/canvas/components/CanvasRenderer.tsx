@@ -7,6 +7,7 @@ type CanvasRendererProps = {
   onPointerUp: PointerEventHandler<HTMLCanvasElement>
   onPointerEnter?: PointerEventHandler<HTMLCanvasElement>
   onPointerOut?: PointerEventHandler<HTMLCanvasElement>
+  hideCursor?: boolean
 }
 
 export function CanvasRenderer({
@@ -16,6 +17,7 @@ export function CanvasRenderer({
   onPointerUp,
   onPointerEnter,
   onPointerOut,
+  hideCursor = false,
 }: CanvasRendererProps) {
   return (
     <canvas
@@ -28,7 +30,7 @@ export function CanvasRenderer({
       onPointerEnter={onPointerEnter}
       onPointerOut={onPointerOut}
       onContextMenu={(event) => event.preventDefault()}
-      className="absolute inset-0 h-full w-full touch-none cursor-crosshair"
+      className={`absolute inset-0 h-full w-full touch-none ${hideCursor ? 'cursor-none' : 'cursor-crosshair'}`}
     />
   )
 }

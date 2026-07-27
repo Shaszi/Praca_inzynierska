@@ -54,18 +54,33 @@ export function drawStroke(
     context.setLineDash(options.dashPattern)
   }
 
-  if (stroke.points.length === 1) {
+  const points = stroke.points
+
+  if (points.length === 1) {
     context.beginPath()
-    context.arc(stroke.points[0].x, stroke.points[0].y, lineWidth / 2, 0, Math.PI * 2)
+    context.arc(points[0].x, points[0].y, lineWidth / 2, 0, Math.PI * 2)
     context.fill()
     return
   }
 
   context.beginPath()
-  context.moveTo(stroke.points[0].x, stroke.points[0].y)
-  for (let index = 1; index < stroke.points.length; index += 1) {
-    context.lineTo(stroke.points[index].x, stroke.points[index].y)
+  context.moveTo(points[0].x, points[0].y)
+
+  if (points.length === 2) {
+    context.lineTo(points[1].x, points[1].y)
+  } else {
+    // Draw smooth curve through midpoints between consecutive points
+    let mx = (points[0].x + points[1].x) / 2
+    let my = (points[0].y + points[1].y) / 2
+    context.lineTo(mx, my)
+    for (let i = 1; i < points.length - 1; i++) {
+      const nmx = (points[i].x + points[i + 1].x) / 2
+      const nmy = (points[i].y + points[i + 1].y) / 2
+      context.quadraticCurveTo(points[i].x, points[i].y, nmx, nmy)
+    }
+    context.lineTo(points[points.length - 1].x, points[points.length - 1].y)
   }
+
   context.stroke()
 }
 

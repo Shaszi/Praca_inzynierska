@@ -46,16 +46,12 @@ function interpolatePoint(a: Point, b: Point, t: number): Point {
 
 function getSampledPointsBetween(a: Point, b: Point, spacing: number): Point[] {
   const distance = getDistance(a, b);
-  if (distance === 0) {
-    return [];
-  }
-
+  if (distance === 0) return [];
   const sampledPoints: Point[] = [];
   const segments = Math.max(1, Math.ceil(distance / spacing));
   for (let step = 1; step <= segments; step += 1) {
     sampledPoints.push(interpolatePoint(a, b, step / segments));
   }
-
   return sampledPoints;
 }
 
@@ -80,21 +76,31 @@ export function useCanvas({
   const activeBrushSizeRef = useRef(brushSize);
   const lastPointerPointRef = useRef<Point | null>(null);
   const isPointerActiveRef = useRef(false);
+  const rafRef = useRef<number | null>(null);
+
+  // Keep stable refs to props that change — avoids stale closures in callbacks
+  const userStrokesRef = useRef(userStrokes);
+  const referenceStrokesRef = useRef(referenceStrokes);
+  const userStrokeColorRef = useRef(userStrokeColor);
+  const referenceStrokeColorRef = useRef(referenceStrokeColor);
+  const toolRef = useRef(tool);
+
+  useEffect(() => { userStrokesRef.current = userStrokes; }, [userStrokes]);
+  useEffect(() => { referenceStrokesRef.current = referenceStrokes; }, [referenceStrokes]);
+  useEffect(() => { userStrokeColorRef.current = userStrokeColor; }, [userStrokeColor]);
+  useEffect(() => { referenceStrokeColorRef.current = referenceStrokeColor; }, [referenceStrokeColor]);
+  useEffect(() => { toolRef.current = tool; }, [tool]);
 
   const redrawScene = useCallback(() => {
     const canvas = canvasRef.current;
     const metrics = metricsRef.current;
     if (!canvas) return;
-
     const context = canvas.getContext("2d");
     if (!context) return;
 
     const activeStroke =
-      tool === "brush" && activePointsRef.current.length > 0
-        ? {
-            points: activePointsRef.current,
-            brushSize: activeBrushSizeRef.current,
-          }
+      toolRef.current === "brush" && activePointsRef.current.length > 0
+        ? { points: activePointsRef.current, brushSize: activeBrushSizeRef.current }
         : null;
 
     renderCanvasScene({
@@ -102,19 +108,22 @@ export function useCanvas({
       width: metrics.width,
       height: metrics.height,
       dpr: metrics.dpr,
-      referenceStrokes,
-      userStrokes,
+      referenceStrokes: referenceStrokesRef.current,
+      userStrokes: userStrokesRef.current,
       activeStroke,
-      referenceStrokeColor,
-      userStrokeColor,
+      referenceStrokeColor: referenceStrokeColorRef.current,
+      userStrokeColor: userStrokeColorRef.current,
     });
-  }, [
-    referenceStrokeColor,
-    referenceStrokes,
-    tool,
-    userStrokeColor,
-    userStrokes,
-  ]);
+  }, []);
+
+  // Cap renders to one per animation frame regardless of pointer event rate
+  const scheduleRedraw = useCallback(() => {
+    if (rafRef.current !== null) return;
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = null;
+      redrawScene();
+    });
+  }, [redrawScene]);
 
   const resizeCanvas = useCallback(() => {
     const container = containerRef.current;
@@ -154,21 +163,10 @@ export function useCanvas({
       activePointsRef.current = [point];
       lastPointerPointRef.current = point;
       onCurrentStrokePointCountChange?.(1);
-      onActiveStrokeChange?.({
-        points: activePointsRef.current.map((currentPoint) => ({ ...currentPoint })),
-        brushSize: activeBrushSizeRef.current,
-      });
-      redrawScene();
+      onActiveStrokeChange?.({ points: [{ ...point }], brushSize: activeBrushSizeRef.current });
+      scheduleRedraw();
     },
-    [
-      onActiveStrokeChange,
-      brushSize,
-      onCurrentStrokePointCountChange,
-      onEraseAtPoint,
-      onEraseStart,
-      redrawScene,
-      tool,
-    ],
+    [brushSize, onActiveStrokeChange, onCurrentStrokePointCountChange, onEraseAtPoint, onEraseStart, scheduleRedraw, tool],
   );
 
   const onPointerMove = useCallback(
@@ -177,46 +175,25 @@ export function useCanvas({
 
       const point = createPointFromPointerEvent(event, canvasRef.current);
       if (tool === "eraser") {
-        const lastPointerPoint = lastPointerPointRef.current;
-        if (!lastPointerPoint) {
-          onEraseAtPoint?.(point);
-          lastPointerPointRef.current = point;
-          return;
-        }
-
-        const sampledPoints = getSampledPointsBetween(
-          lastPointerPoint,
-          point,
-          POINT_SPACING_PX,
-        );
-        for (const sampledPoint of sampledPoints) {
-          onEraseAtPoint?.(sampledPoint);
-        }
+        const last = lastPointerPointRef.current;
+        const sampled = last ? getSampledPointsBetween(last, point, POINT_SPACING_PX) : [point];
+        for (const p of sampled) onEraseAtPoint?.(p);
         lastPointerPointRef.current = point;
         return;
       }
 
       const points = activePointsRef.current;
-      const previousPoint = points[points.length - 1];
-      if (previousPoint?.x === point.x && previousPoint.y === point.y) return;
+      const prev = points[points.length - 1];
+      if (prev?.x === point.x && prev.y === point.y) return;
 
-      const sampledPoints = getSampledPointsBetween(
-        previousPoint,
-        point,
-        POINT_SPACING_PX,
-      );
-      for (const sampledPoint of sampledPoints) {
-        points.push(sampledPoint);
-      }
+      const sampled = getSampledPointsBetween(prev, point, POINT_SPACING_PX);
+      for (const p of sampled) points.push(p);
       lastPointerPointRef.current = point;
       onCurrentStrokePointCountChange?.(points.length);
-      onActiveStrokeChange?.({
-        points: points.map((currentPoint) => ({ ...currentPoint })),
-        brushSize: activeBrushSizeRef.current,
-      });
-      redrawScene();
+      onActiveStrokeChange?.({ points: points.map((p) => ({ ...p })), brushSize: activeBrushSizeRef.current });
+      scheduleRedraw();
     },
-    [onActiveStrokeChange, onCurrentStrokePointCountChange, onEraseAtPoint, redrawScene, tool],
+    [onActiveStrokeChange, onCurrentStrokePointCountChange, onEraseAtPoint, scheduleRedraw, tool],
   );
 
   const onPointerUp = useCallback(
@@ -224,35 +201,30 @@ export function useCanvas({
       if (!isPointerActiveRef.current) return;
 
       const canvas = canvasRef.current;
-      if (canvas?.hasPointerCapture(event.pointerId))
-        canvas.releasePointerCapture(event.pointerId);
+      if (canvas?.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
       isPointerActiveRef.current = false;
 
       if (tool === "brush" && activePointsRef.current.length > 0) {
         onStrokeComplete({
-          points: activePointsRef.current.map((point) => ({ ...point })),
+          points: activePointsRef.current.map((p) => ({ ...p })),
           brushSize: activeBrushSizeRef.current,
         });
       }
-      if (tool === "eraser") {
-        onEraseEnd?.();
-      }
+      if (tool === "eraser") onEraseEnd?.();
 
       activePointsRef.current = [];
       lastPointerPointRef.current = null;
       onCurrentStrokePointCountChange?.(0);
       onActiveStrokeChange?.(null);
-      redrawScene();
+      scheduleRedraw();
     },
-    [
-      onActiveStrokeChange,
-      onCurrentStrokePointCountChange,
-      onEraseEnd,
-      onStrokeComplete,
-      redrawScene,
-      tool,
-    ],
+    [onActiveStrokeChange, onCurrentStrokePointCountChange, onEraseEnd, onStrokeComplete, scheduleRedraw, tool],
   );
+
+  // Re-render whenever strokes or colors change (e.g. eraser, undo, new stroke)
+  useEffect(() => {
+    scheduleRedraw();
+  }, [userStrokes, referenceStrokes, userStrokeColor, referenceStrokeColor, scheduleRedraw]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -265,10 +237,9 @@ export function useCanvas({
     return () => {
       observer.disconnect();
       window.removeEventListener("resize", resizeCanvas);
+      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
     };
   }, [resizeCanvas]);
-
-  useEffect(() => redrawScene(), [redrawScene]);
 
   return { canvasRef, containerRef, onPointerDown, onPointerMove, onPointerUp };
 }

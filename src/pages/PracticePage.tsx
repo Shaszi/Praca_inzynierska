@@ -215,7 +215,7 @@ export function PracticePage() {
           </p>
           <Link
             to="/app/references"
-            className="mt-2 inline-flex min-h-11 items-center rounded-[10px] bg-ink px-4 text-[15px] font-semibold text-white transition hover:bg-ink-hover"
+            className="mt-2 inline-flex min-h-11 items-center rounded-[10px] bg-accent px-4 text-[15px] font-semibold text-on-accent transition hover:bg-accent-strong"
           >
             Otwórz edytor wzorców
           </Link>

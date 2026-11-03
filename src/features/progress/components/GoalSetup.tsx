@@ -47,7 +47,7 @@ export function GoalSetup({ initialDays = 30, onSave, onCancel, onClear }: GoalS
             className={[
               'min-h-11 rounded-[10px] border px-4 font-mono text-sm font-medium transition',
               days === preset
-                ? 'border-ink bg-ink text-white'
+                ? 'border-accent bg-accent text-on-accent'
                 : 'border-line-strong bg-surface text-ink-soft hover:bg-surface-dim',
             ].join(' ')}
           >
@@ -83,7 +83,7 @@ export function GoalSetup({ initialDays = 30, onSave, onCancel, onClear }: GoalS
         <button
           type="submit"
           disabled={isSaving}
-          className="min-h-11 rounded-[10px] bg-ink px-4 text-[15px] font-semibold text-white transition hover:bg-ink-hover disabled:opacity-60"
+          className="min-h-11 rounded-[10px] bg-accent px-4 text-[15px] font-semibold text-on-accent transition hover:bg-accent-strong disabled:opacity-60"
         >
           Ustaw cel: {days} dni
         </button>

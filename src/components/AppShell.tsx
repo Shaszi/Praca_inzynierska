@@ -2,7 +2,8 @@ import type { ComponentType, SVGProps } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
 import { useAuth } from '../features/auth/authContext'
 import { BrandMark } from './BrandMark'
-import { ChartIcon, HomeIcon, ImageIcon, LayersIcon, LogOutIcon, PencilIcon } from './icons'
+import { setTheme, useTheme } from '../features/theme/theme'
+import { ChartIcon, HomeIcon, ImageIcon, LayersIcon, LogOutIcon, MoonIcon, PencilIcon, SunIcon } from './icons'
 
 type NavItem = {
   to: string
@@ -46,7 +47,10 @@ export function AppShell() {
               className={({ isActive }) =>
                 [
                   'flex min-h-11 items-center gap-2 rounded-[9px] px-4 text-[15px] font-medium transition',
-                  isActive ? 'bg-ink text-white' : 'text-ink-soft hover:bg-surface-dim',
+                  // Miękka pastylka akcentu zamiast czarnego bloku — zgodnie z makietą.
+                  isActive
+                    ? 'bg-accent-soft font-semibold text-accent'
+                    : 'text-ink-soft hover:bg-surface-dim hover:text-ink',
                 ].join(' ')
               }
             >
@@ -60,6 +64,7 @@ export function AppShell() {
           <span className="hidden max-w-40 truncate text-sm text-ink-faint lg:block" title={name}>
             {name}
           </span>
+          <ThemeToggle />
           <button
             type="button"
             onClick={signOut}
@@ -99,5 +104,22 @@ export function AppShell() {
         ))}
       </nav>
     </div>
+  )
+}
+
+function ThemeToggle() {
+  const theme = useTheme()
+  const next = theme === 'dark' ? 'light' : 'dark'
+
+  return (
+    <button
+      type="button"
+      onClick={() => setTheme(next)}
+      title={next === 'dark' ? 'Przełącz na ciemny' : 'Przełącz na jasny'}
+      aria-label={next === 'dark' ? 'Przełącz na ciemny motyw' : 'Przełącz na jasny motyw'}
+      className="flex min-h-11 w-11 items-center justify-center rounded-[10px] border border-line-strong bg-surface text-ink-soft transition hover:bg-surface-dim hover:text-ink"
+    >
+      {theme === 'dark' ? <SunIcon className="h-[18px] w-[18px]" /> : <MoonIcon className="h-[18px] w-[18px]" />}
+    </button>
   )
 }

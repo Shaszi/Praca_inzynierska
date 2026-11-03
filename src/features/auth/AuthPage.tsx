@@ -154,7 +154,7 @@ export function AuthPage({ mode }: { mode: Mode }) {
             <button
               type="submit"
               disabled={isSubmitting}
-              className="mt-2 min-h-11 rounded-[10px] bg-ink px-4 text-[15px] font-semibold text-white transition hover:bg-ink-hover disabled:opacity-60"
+              className="mt-2 min-h-11 rounded-[10px] bg-accent px-4 text-[15px] font-semibold text-on-accent transition hover:bg-accent-strong disabled:opacity-60"
             >
               {isSubmitting ? 'Chwila…' : isSignup ? 'Utwórz konto' : 'Zaloguj się'}
             </button>

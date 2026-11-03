@@ -52,7 +52,7 @@ export function DashboardPage() {
           to="/app/practice"
           className="group flex flex-col rounded-2xl border border-line bg-surface p-[18px] transition hover:border-accent-line hover:bg-accent-soft"
         >
-          <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-ink text-white"><PencilIcon className="h-5 w-5" /></span>
+          <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-accent-soft text-accent"><PencilIcon className="h-5 w-5" /></span>
           <h2 className="mt-4 text-[17px] font-bold text-ink">Ćwiczenie z wzorcem</h2>
           <p className="mt-1 text-sm text-ink-soft">
             Odrysowuj zapisane wzorce kreska po kresce. Każda kreska dostaje ocenę dopasowania i komentarz AI.
@@ -65,7 +65,7 @@ export function DashboardPage() {
           to="/app/practice/image"
           className="group flex flex-col rounded-2xl border border-line bg-surface p-[18px] transition hover:border-accent-line hover:bg-accent-soft"
         >
-          <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-ink text-white"><ImageIcon className="h-5 w-5" /></span>
+          <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-accent-soft text-accent"><ImageIcon className="h-5 w-5" /></span>
           <h2 className="mt-4 text-[17px] font-bold text-ink">Rysunek ze zdjęcia</h2>
           <p className="mt-1 text-sm text-ink-soft">
             Wgraj zdjęcie, a AI rozpisze je na kroki — od głównych brył do detali — i oceni każdy etap.

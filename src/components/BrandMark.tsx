@@ -1,7 +1,7 @@
 export function BrandMark({ className = '' }: { className?: string }) {
   return (
     <span className={`inline-flex items-center gap-3 ${className}`}>
-      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-ink text-white">
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent text-on-accent">
         <svg
           width="20"
           height="20"

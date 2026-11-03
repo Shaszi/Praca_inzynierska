@@ -27,7 +27,7 @@ export function LandingPage() {
         <BrandMark />
         <nav className="flex items-center gap-2 text-sm">
           {user ? (
-            <Link to="/app" className="flex min-h-11 items-center rounded-[10px] bg-ink px-4 font-semibold text-white hover:bg-ink-hover">
+            <Link to="/app" className="flex min-h-11 items-center rounded-[10px] bg-accent px-4 font-semibold text-on-accent hover:bg-accent-strong">
               Otwórz aplikację
             </Link>
           ) : (
@@ -35,7 +35,7 @@ export function LandingPage() {
               <Link to="/login" className="flex min-h-11 items-center rounded-[10px] px-3 font-semibold text-ink-soft hover:text-ink">
                 Zaloguj się
               </Link>
-              <Link to="/signup" className="flex min-h-11 items-center rounded-[10px] bg-ink px-4 font-semibold text-white hover:bg-ink-hover">
+              <Link to="/signup" className="flex min-h-11 items-center rounded-[10px] bg-accent px-4 font-semibold text-on-accent hover:bg-accent-strong">
                 Załóż konto
               </Link>
             </>
@@ -55,7 +55,7 @@ export function LandingPage() {
             <div className="mt-8 flex flex-wrap gap-3">
               <Link
                 to={user ? '/app' : '/signup'}
-                className="flex min-h-11 items-center rounded-[10px] bg-ink px-5 font-semibold text-white transition hover:bg-ink-hover"
+                className="flex min-h-11 items-center rounded-[10px] bg-accent px-5 font-semibold text-on-accent transition hover:bg-accent-strong"
               >
                 {user ? 'Wróć do ćwiczeń' : 'Zacznij za darmo'}
               </Link>

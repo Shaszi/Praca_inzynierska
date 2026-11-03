@@ -18,6 +18,9 @@
   --color-ink-soft: #3f3866;
   --color-ink-faint: #5a5280;
   --color-accent: #5a2ee0;
+  /* Kolor treści leżącej NA akcencie. Osobny token, bo w ciemnym motywie akcent
+     jest jasny i biały tekst dałby na nim ok. 2.4:1. */
+  --color-on-accent: #ffffff;
   --color-accent-strong: #4318b4;
   --color-accent-soft: #efe9ff;
   --color-accent-line: #c9b8f9;
@@ -31,6 +34,71 @@
 
 :root {
   color-scheme: light;
+  /* Plamy barwne tła. Poza @theme, bo to dekoracja, a nie token interfejsu. */
+  --wash-1: #e2dcff;
+  --wash-2: #d7f1ea;
+  --wash-3: #ffe4d6;
+}
+
+/* Ciemny wariant: te same nazwy tokenów, inne wartości, więc żaden komponent się nie zmienia.
+   Kolejność ma znaczenie — jasna paleta musi być zdefiniowana w gołym :root powyżej,
+   inaczej motyw systemowy nie ma czego nadpisać. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+    --wash-1: #241f3d;
+    --wash-2: #11302a;
+    --wash-3: #33221b;
+    --color-paper: #121018;
+    --color-paper-dim: #1b1826;
+    --color-surface: #1c1930;
+    --color-surface-dim: #242036;
+    --color-line: #302b45;
+    --color-line-strong: #6b6196;
+    --color-ink: #f1effa;
+    --color-ink-hover: #ded8f2;
+    --color-ink-soft: #c9c3e0;
+    --color-ink-faint: #9a93b8;
+    --color-accent: #a78bfa;
+    --color-on-accent: #121018;
+    --color-accent-strong: #c4b5fd;
+    --color-accent-soft: #241f3d;
+    --color-accent-line: #4c3f7a;
+    --color-success: #3ddc97;
+    --color-success-soft: #14301f;
+    --color-warn: #f0a868;
+    --color-warn-soft: #332009;
+    --color-danger: #ff7d99;
+    --color-danger-soft: #38131f;
+  }
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --wash-1: #241f3d;
+  --wash-2: #11302a;
+  --wash-3: #33221b;
+  --color-paper: #121018;
+  --color-paper-dim: #1b1826;
+  --color-surface: #1c1930;
+  --color-surface-dim: #242036;
+  --color-line: #302b45;
+  --color-line-strong: #6b6196;
+  --color-ink: #f1effa;
+  --color-ink-hover: #ded8f2;
+  --color-ink-soft: #c9c3e0;
+  --color-ink-faint: #9a93b8;
+  --color-accent: #a78bfa;
+  --color-on-accent: #121018;
+  --color-accent-strong: #c4b5fd;
+  --color-accent-soft: #241f3d;
+  --color-accent-line: #4c3f7a;
+  --color-success: #3ddc97;
+  --color-success-soft: #14301f;
+  --color-warn: #f0a868;
+  --color-warn-soft: #332009;
+  --color-danger: #ff7d99;
+  --color-danger-soft: #38131f;
 }
 
 * {
@@ -47,9 +115,9 @@ body {
   /* Trzy bardzo jasne plamy barwne zamiast płaskiej szarości. Jasność każdej > 0.85,
      więc tusz na nich nadal trzyma kontrast powyżej 12:1. */
   background-image:
-    radial-gradient(900px 540px at 10% -10%, #e2dcff 0%, transparent 62%),
-    radial-gradient(780px 480px at 94% 2%, #d7f1ea 0%, transparent 64%),
-    radial-gradient(700px 520px at 48% 112%, #ffe4d6 0%, transparent 60%);
+    radial-gradient(900px 540px at 10% -10%, var(--wash-1) 0%, transparent 62%),
+    radial-gradient(780px 480px at 94% 2%, var(--wash-2) 0%, transparent 64%),
+    radial-gradient(700px 520px at 48% 112%, var(--wash-3) 0%, transparent 60%);
   background-attachment: fixed;
   background-repeat: no-repeat;
   color: var(--color-ink);

@@ -3,6 +3,7 @@ import type { PointerEvent as ReactPointerEvent } from 'react'
 import { useCanvas } from '../hooks/useCanvas'
 import type { GuideType, Point, SmoothingSettings, Stroke, Tool } from '../../../types/drawing'
 import { IDENTITY_VIEW, type CanvasView } from '../utils/canvasPoint'
+import { useCanvasColors } from '../utils/themeColors'
 import { CanvasOverlay } from './CanvasOverlay'
 import { CanvasRenderer } from './CanvasRenderer'
 
@@ -50,6 +51,8 @@ export function DrawingCanvas({
   const cursorRef = useRef<HTMLDivElement>(null)
   // Widok w stanie Reacta: zmienia się przy tyknięciu kółka, nie co ruch wskaźnika.
   const [view, setView] = useState<CanvasView>(IDENTITY_VIEW)
+  // Domyślne kolory płótna z tokenów, żeby strony, które ich nie podają, też szły za motywem.
+  const colors = useCanvasColors()
 
   const handleViewChange = useCallback(
     (next: CanvasView) => {
@@ -71,8 +74,8 @@ export function DrawingCanvas({
     onEraseEnd,
     onCurrentStrokePointCountChange,
     onActiveStrokeChange,
-    userStrokeColor,
-    referenceStrokeColor,
+    userStrokeColor: userStrokeColor ?? colors.ink,
+    referenceStrokeColor: referenceStrokeColor ?? colors.lineStrong,
     onViewChange: handleViewChange,
   })
 

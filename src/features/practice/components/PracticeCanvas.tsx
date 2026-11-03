@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { Point, SmoothingSettings, Stroke, Tool } from '../../../types/drawing'
 import { DrawingCanvas } from '../../canvas/components/DrawingCanvas'
 import { IDENTITY_VIEW, type CanvasView } from '../../canvas/utils/canvasPoint'
+import { useCanvasColors } from '../../canvas/utils/themeColors'
 
 type PracticeCanvasProps = {
   userStrokes: Stroke[]
@@ -36,6 +37,7 @@ export function PracticeCanvas({
   errorMarker = null,
 }: PracticeCanvasProps) {
   const [view, setView] = useState<CanvasView>(IDENTITY_VIEW)
+  const colors = useCanvasColors()
 
   return (
     <div className="relative h-full w-full">
@@ -55,7 +57,7 @@ export function PracticeCanvas({
         guide={null}
         userStrokeColor={userStrokeColor}
         // Akcent, nie bladofiolet: to kreska, którą użytkownik ma narysować TERAZ.
-        referenceStrokeColor="#5a2ee0"
+        referenceStrokeColor={colors.accent}
         onViewChange={setView}
       />
       {errorMarker && (

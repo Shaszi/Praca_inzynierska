@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Point, Stroke } from '../../../types/drawing'
+import { useCanvasColors } from '../../canvas/utils/themeColors'
 import { evaluateStroke, liveProgress, type LiveProgress, type StrokeEvaluation } from '../utils/strokeEvaluation'
 
 type UsePracticeAnalysisResult = {
@@ -11,11 +12,9 @@ type UsePracticeAnalysisResult = {
   resetAnalysis: () => void
 }
 
-// Kolory kreski na płótnie: hexy literalne, bo context 2D nie przyjmie klas Tailwinda.
-// Odpowiadają --color-ink, --color-success, --color-warn i --color-danger z index.css.
-const INK = '#16132a'
-
 export function usePracticeAnalysis(referenceStroke: Stroke | null): UsePracticeAnalysisResult {
+  // Kolory kreski czytane z tokenów, nie wpisane na sztywno — dzięki temu jadą za motywem.
+  const colors = useCanvasColors()
   const [live, setLive] = useState<LiveProgress | null>(null)
   const [evaluation, setEvaluation] = useState<StrokeEvaluation | null>(null)
   const rafRef = useRef<number | null>(null)
@@ -60,11 +59,11 @@ export function usePracticeAnalysis(referenceStroke: Stroke | null): UsePractice
   }, [])
 
   const activeStrokeColor = useMemo(() => {
-    if (live === null) return INK
-    if (live.accuracy >= 80) return '#0d7a56'
-    if (live.accuracy >= 55) return '#a04700'
-    return '#c4123f'
-  }, [live])
+    if (live === null) return colors.ink
+    if (live.accuracy >= 80) return colors.success
+    if (live.accuracy >= 55) return colors.warn
+    return colors.danger
+  }, [colors, live])
 
   return { evaluation, live, activeStrokeColor, analyzeActiveStroke, evaluateCompletedStroke, resetAnalysis }
 }

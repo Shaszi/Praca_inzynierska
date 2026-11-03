@@ -6,7 +6,8 @@ type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger'
 type ButtonSize = 'sm' | 'md'
 
 const variantClass: Record<ButtonVariant, string> = {
-  primary: 'border border-ink bg-ink text-white hover:bg-ink-hover',
+  // Akcja główna niesie akcent, nie czerń — inaczej paleta istnieje tylko w tokenach.
+  primary: 'border border-accent bg-accent text-on-accent hover:border-accent-strong hover:bg-accent-strong',
   secondary: 'border border-line-strong bg-surface text-ink hover:bg-surface-dim',
   ghost: 'text-ink-soft hover:bg-surface-dim hover:text-ink',
   danger: 'text-ink-soft hover:bg-danger-soft hover:text-danger',
@@ -57,7 +58,7 @@ export function Segmented<T extends string>({
     <div
       role="radiogroup"
       aria-label={ariaLabel}
-      className={`flex gap-1 rounded-xl border border-line-strong bg-surface p-1 ${className}`}
+      className={`flex gap-1 rounded-xl border border-line bg-paper-dim p-1 ${className}`}
     >
       {options.map((option) => (
         <button
@@ -69,7 +70,10 @@ export function Segmented<T extends string>({
           onClick={() => onChange(option.value)}
           className={[
             'min-h-8 flex-1 rounded-lg px-3 text-sm font-medium transition',
-            value === option.value ? 'bg-ink text-white' : 'text-ink-soft hover:bg-surface-dim',
+            // Wybrany segment jest „wyniesiony", nie czarny — czarny blok dominował pasek narzędzi.
+            value === option.value
+              ? 'bg-surface text-ink shadow-[0_1px_2px_rgba(22,19,42,0.10)]'
+              : 'text-ink-faint hover:text-ink',
           ].join(' ')}
         >
           {option.label}
@@ -124,7 +128,7 @@ export function TypingDots() {
   )
 }
 
-export const rangeClass = 'h-1.5 cursor-pointer accent-[var(--color-ink)]'
+export const rangeClass = 'h-1.5 cursor-pointer accent-[var(--color-accent)]'
 
 export const selectClass =
   'min-h-11 rounded-[10px] border border-line-strong bg-surface px-3 text-[15px] text-ink transition hover:border-ink-faint focus:border-accent focus:outline-none'

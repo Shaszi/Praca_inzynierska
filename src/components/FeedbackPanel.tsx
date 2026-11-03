@@ -14,7 +14,7 @@ type FeedbackPanelProps = {
 
 const TONE: Record<Level, { text: string; bar: string; dot: string; verdict: string }> = {
   good: { text: 'text-success', bar: 'bg-success', dot: 'bg-success', verdict: 'Bardzo dobrze' },
-  warn: { text: 'text-warn', bar: 'bg-[#b86200]', dot: 'bg-[#c77700]', verdict: 'Do poprawy' },
+  warn: { text: 'text-warn', bar: 'bg-warn', dot: 'bg-warn', verdict: 'Do poprawy' },
   bad: { text: 'text-danger', bar: 'bg-danger', dot: 'bg-danger', verdict: 'Spróbuj jeszcze raz' },
 }
 

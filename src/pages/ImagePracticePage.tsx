@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowRightIcon, ImageIcon } from '../components/icons'
-import { Button, Divider, PageHeader, rangeClass, Segmented, Spinner, TypingDots } from '../components/ui'
+import { ControlBar } from '../components/ControlBar'
+import { Button, PageHeader, Spinner, TypingDots } from '../components/ui'
 import { DrawingCanvas } from '../features/canvas/components/DrawingCanvas'
-import { SmoothingControl } from '../features/canvas/components/SmoothingControl'
 import { useSmoothingSettings } from '../features/canvas/hooks/useSmoothingSettings'
 import { StrokeThumbnail } from '../features/progress/components/StrokeThumbnail'
 import { usePracticeSession } from '../features/progress/hooks/usePracticeSession'
@@ -19,11 +19,6 @@ import type { Point, Stroke, Tool } from '../types/drawing'
 import { eraseAtPoint } from '../utils/eraser'
 
 type Phase = 'upload' | 'analyzing' | 'practicing' | 'done'
-
-const TOOL_OPTIONS: { value: Tool; label: string }[] = [
-  { value: 'brush', label: 'Pędzel' },
-  { value: 'eraser', label: 'Gumka' },
-]
 
 const ACCEPTED_TYPES: SupportedMediaType[] = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
 
@@ -281,30 +276,26 @@ export function ImagePracticePage() {
 
       {/* TOP: toolbar + step progress */}
       <div className="pointer-events-none absolute inset-x-4 top-4 z-10 flex flex-wrap items-start justify-between gap-2">
-        <div className={`pointer-events-auto flex flex-wrap items-center gap-x-2 gap-y-1.5 px-2.5 py-2 ${floating}`}>
-          <Segmented
-            options={TOOL_OPTIONS}
-            value={tool}
-            onChange={setTool}
-            ariaLabel="Narzędzie"
-          />
-          <Divider />
-          <label className="flex items-center gap-2">
-            <span className="text-[13px] text-ink-soft">Rozmiar</span>
-            <input
-              type="range" min={2} max={30} value={brushSize}
-              onChange={(e) => setBrushSize(Number(e.target.value))}
-              className={`w-20 ${rangeClass}`}
-            />
-            <span className="w-5 text-right text-xs tabular-nums text-ink-soft">{brushSize}</span>
-          </label>
-          <Divider />
-          <SmoothingControl value={smoothing} onChange={setSmoothing} />
-          <Divider />
-          <Button variant="ghost" size="sm" onClick={handleUndo} disabled={!canUndo}>Cofnij</Button>
-          <Button variant="danger" size="sm" onClick={handleClear}>Wyczyść</Button>
-          <Button variant="ghost" size="sm" onClick={resetAll}>Zmień zdjęcie</Button>
-        </div>
+        <ControlBar
+          className="pointer-events-auto"
+          chromeClassName={`px-2.5 py-2 ${floating}`}
+          brushSize={brushSize}
+          onBrushSizeChange={setBrushSize}
+          minBrushSize={2}
+          maxBrushSize={30}
+          tool={tool}
+          onToolChange={setTool}
+          smoothing={smoothing}
+          onSmoothingChange={setSmoothing}
+          onUndo={handleUndo}
+          onRedo={redoStroke}
+          onClear={handleClear}
+          canUndo={canUndo}
+          canRedo={canRedo}
+          extraControls={
+            <Button variant="ghost" size="sm" onClick={resetAll}>Zmień zdjęcie</Button>
+          }
+        />
 
         <div className={`pointer-events-auto flex items-center gap-3 px-2.5 py-2 ${floating}`}>
           {imageUrl && <img src={imageUrl} alt="Zdjęcie wzorcowe" className="h-9 w-9 rounded-lg object-cover" />}

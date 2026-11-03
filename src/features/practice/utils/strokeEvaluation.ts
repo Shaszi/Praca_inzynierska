@@ -55,6 +55,8 @@ type Vec = { x: number; y: number }
 // --- Progi ---------------------------------------------------------------
 
 const SAMPLES = 90
+// Kubełki pokrycia wzoru dla paska postępu: 48 daje krok ~2% i płynny ruch paska.
+const COVERAGE_BINS = 48
 const TREMOR_SPACING_PX = 2
 const TREMOR_WINDOW = 4
 const PAUSE_MOVE_PX = 3
@@ -513,20 +515,55 @@ export function evaluateStroke(user: Stroke, reference: Stroke, rawPoints?: Poin
   }
 }
 
+export type LiveProgress = {
+  /** 0–100: jak blisko wzoru leży kreska. Steruje kolorem aktywnej kreski. */
+  accuracy: number
+  /** 0–100: jaka część wzoru jest już pokryta w granicach tolerancji. */
+  coverage: number
+  /** Margines błędu w px — do tyle od wzoru kreska jeszcze zalicza pokrycie. */
+  tolerancePx: number
+}
+
 /**
- * Szybka ocena w trakcie rysowania (0–100): tylko odległość od wzoru,
+ * Szybka ocena w trakcie rysowania. Dokładność to tylko odległość od wzoru,
  * bo niedokończona kreska nie ma jeszcze sensownej długości ani końca.
+ *
+ * Pokrycie liczymy kubełkami wzdłuż długości wzoru: kubełek zalicza się, gdy trafi
+ * w niego punkt kreski w granicach tolerancji. Dzięki temu kreślenie w jednym miejscu
+ * nie zapełnia paska, przerwa w środku nie liczy się jako narysowana, a ruch tam
+ * i z powrotem nie dodaje pokrycia drugi raz.
  */
-export function liveAccuracy(partial: Stroke, reference: Stroke): number | null {
+export function liveProgress(partial: Stroke, reference: Stroke): LiveProgress | null {
   if (partial.points.length < 2 || reference.points.length < 2) return null
+
   const refLength = pathLength(reference.points)
   const { good, bad } = offsetTolerance(reference, refLength)
+
+  const cumulative = [0]
+  for (let i = 1; i < reference.points.length; i++) {
+    cumulative.push(cumulative[i - 1] + dist(reference.points[i - 1], reference.points[i]))
+  }
+  const total = cumulative[cumulative.length - 1]
+
+  const covered = new Array<boolean>(COVERAGE_BINS).fill(false)
   const step = Math.max(1, Math.floor(partial.points.length / 60))
   let sum = 0
   let count = 0
+
   for (let i = 0; i < partial.points.length; i += step) {
-    sum += nearestOnPolyline(partial.points[i], reference.points).distance
+    const nearest = nearestOnPolyline(partial.points[i], reference.points)
+    sum += nearest.distance
     count += 1
+
+    if (nearest.distance <= bad && total > 0) {
+      const along = cumulative[nearest.segmentIndex] + dist(reference.points[nearest.segmentIndex], nearest.point)
+      covered[Math.min(COVERAGE_BINS - 1, Math.floor((along / total) * COVERAGE_BINS))] = true
+    }
   }
-  return Math.round(grade(sum / count, good, bad).score * 100)
+
+  return {
+    accuracy: Math.round(grade(sum / count, good, bad).score * 100),
+    coverage: Math.round((covered.filter(Boolean).length / COVERAGE_BINS) * 100),
+    tolerancePx: bad,
+  }
 }

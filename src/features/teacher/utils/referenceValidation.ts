@@ -29,6 +29,10 @@ export function isModernStroke(value: unknown): value is Stroke {
   )
 }
 
+// Pola są tu wypisane celowo — to biała lista na granicy zaufania, nie przeoczenie.
+// `value` pochodzi z importowanego pliku JSON albo z wiersza bazy, więc spread (`...value`)
+// przepuściłby dowolne obce pola do stanu aplikacji i dalej do Supabase.
+// Dodając nowe pole do Stroke/Point, dopisz je TUTAJ wraz z walidacją w isModernStroke/isPoint.
 export function normalizeStroke(value: unknown): Stroke | null {
   if (isModernStroke(value)) {
     return {

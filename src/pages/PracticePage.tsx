@@ -7,6 +7,7 @@ import { FeedbackPanel } from '../components/FeedbackPanel'
 import { useSmoothingSettings } from '../features/canvas/hooks/useSmoothingSettings'
 import { PracticeCanvas } from '../features/practice/components/PracticeCanvas'
 import { usePracticeAnalysis } from '../features/practice/hooks/usePracticeAnalysis'
+import type { LiveProgress } from '../features/practice/utils/strokeEvaluation'
 import { useReferenceGuide } from '../features/practice/hooks/useReferenceGuide'
 import { usePracticeSession } from '../features/progress/hooks/usePracticeSession'
 import { ReferenceSelector } from '../features/teacher/components/ReferenceSelector'
@@ -63,7 +64,7 @@ export function PracticePage() {
   // Show only the current guide stroke as overlay
   const guideStrokesForCanvas = currentReferenceStroke ? [currentReferenceStroke] : []
 
-  const { evaluation, activeStrokeColor, analyzeActiveStroke, evaluateCompletedStroke, resetAnalysis } =
+  const { evaluation, live, activeStrokeColor, analyzeActiveStroke, evaluateCompletedStroke, resetAnalysis } =
     usePracticeAnalysis(currentReferenceStroke)
 
   const sessionParams = useMemo(
@@ -240,6 +241,13 @@ export function PracticePage() {
             }
           />
 
+          {currentReferenceStroke ? (
+            <StrokeMeter
+              live={live}
+              finalCoverage={awaitingNext && evaluation && !evaluation.tooShort ? evaluation.lengthRatio * 100 : null}
+            />
+          ) : null}
+
           <div className="relative min-h-[420px] flex-1">
             <PracticeCanvas
               userStrokes={strokes}
@@ -300,6 +308,44 @@ export function PracticePage() {
         </>
       )}
     </section>
+  )
+}
+
+/**
+ * Pasek zapełniający się w trakcie ruchu: pokazuje, jaka część wzoru jest już pokryta.
+ * Kolor bierze się z dokładności, więc rysowanie obok wzoru zapełnia pasek, ale na czerwono.
+ * Po puszczeniu kreski pasek zostaje na wyniku końcowym, zamiast skakać do zera.
+ */
+function StrokeMeter({ live, finalCoverage }: { live: LiveProgress | null; finalCoverage: number | null }) {
+  const coverage = Math.max(0, Math.min(100, finalCoverage ?? live?.coverage ?? 0))
+  const rounded = Math.round(coverage)
+  const accuracy = live?.accuracy ?? null
+  const bar =
+    accuracy === null ? 'bg-accent' : accuracy >= 80 ? 'bg-success' : accuracy >= 55 ? 'bg-warn' : 'bg-danger'
+
+  return (
+    <div className="flex items-center gap-3">
+      <span className="font-mono text-xs uppercase tracking-[0.04em] text-ink-faint">Pokrycie kroku</span>
+      <div
+        className="h-1.5 flex-1 overflow-hidden rounded-full bg-paper-dim"
+        role="progressbar"
+        aria-label="Pokrycie aktualnego kroku"
+        aria-valuenow={rounded}
+        aria-valuemin={0}
+        aria-valuemax={100}
+      >
+        <div
+          className={`h-full rounded-full transition-[width] duration-100 ease-out ${bar}`}
+          style={{ width: `${coverage}%` }}
+        />
+      </div>
+      <span className="font-mono text-xs tabular-nums text-ink">{rounded}%</span>
+      {live ? (
+        <span className="font-mono text-xs text-ink-faint" title="Margines błędu: do tyle od wzoru kreska jeszcze się liczy">
+          ±{Math.round(live.tolerancePx)} px
+        </span>
+      ) : null}
+    </div>
   )
 }
 

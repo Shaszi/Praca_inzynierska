@@ -5,27 +5,28 @@
   --font-sans: 'IBM Plex Sans', system-ui, sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
 
-  /* Chłodna, narzędziowa paleta: szare tło, białe karty, grafitowy tusz, niebieski akcent */
-  --color-paper: #eceef2;
-  --color-paper-dim: #e3e6eb;
+  /* Paleta pracowni: fiołkowy papier, białe karty, atramentowy tusz, żywy fiolet jako akcent.
+     Każdy kolor tekstu trzyma kontrast min. 4.5:1 na papierze i na białym. */
+  --color-paper: #f1f0f9;
+  --color-paper-dim: #e4e2f2;
   --color-surface: #ffffff;
-  --color-surface-dim: #f5f6f8;
-  --color-line: #dce0e6;
-  --color-line-strong: #c4cad3;
-  --color-ink: #16181d;
-  --color-ink-hover: #2b2f37;
-  --color-ink-soft: #3c424d;
-  --color-ink-faint: #555c69;
-  --color-accent: #2350c8;
-  --color-accent-strong: #16388f;
-  --color-accent-soft: #eef2fc;
-  --color-accent-line: #bfcdf2;
-  --color-success: #17703f;
-  --color-success-soft: #e9f5ee;
-  --color-warn: #9a4a00;
-  --color-warn-soft: #fff3e6;
-  --color-danger: #b42318;
-  --color-danger-soft: #fdecea;
+  --color-surface-dim: #f8f7fd;
+  --color-line: #e3e0f1;
+  --color-line-strong: #c6c1e3;
+  --color-ink: #16132a;
+  --color-ink-hover: #2a2550;
+  --color-ink-soft: #3f3866;
+  --color-ink-faint: #5a5280;
+  --color-accent: #5a2ee0;
+  --color-accent-strong: #4318b4;
+  --color-accent-soft: #efe9ff;
+  --color-accent-line: #c9b8f9;
+  --color-success: #0d7a56;
+  --color-success-soft: #e2f6ee;
+  --color-warn: #a04700;
+  --color-warn-soft: #fff0df;
+  --color-danger: #c4123f;
+  --color-danger-soft: #fde9ee;
 }
 
 :root {
@@ -43,6 +44,14 @@ body {
   font-size: 15px;
   line-height: 1.45;
   background-color: var(--color-paper);
+  /* Trzy bardzo jasne plamy barwne zamiast płaskiej szarości. Jasność każdej > 0.85,
+     więc tusz na nich nadal trzyma kontrast powyżej 12:1. */
+  background-image:
+    radial-gradient(900px 540px at 10% -10%, #e2dcff 0%, transparent 62%),
+    radial-gradient(780px 480px at 94% 2%, #d7f1ea 0%, transparent 64%),
+    radial-gradient(700px 520px at 48% 112%, #ffe4d6 0%, transparent 60%);
+  background-attachment: fixed;
+  background-repeat: no-repeat;
   color: var(--color-ink);
   -webkit-font-smoothing: antialiased;
 }

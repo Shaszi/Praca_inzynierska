@@ -19,6 +19,9 @@ type ControlBarProps = {
   minBrushSize?: number
   maxBrushSize?: number
   className?: string
+  /** Ramka, tło i padding. Osobno od className, bo dopisanie konkurencyjnego tła
+   *  rozstrzyga kolejność w wygenerowanym CSS, nie kolejność klas w atrybucie. */
+  chromeClassName?: string
 }
 
 const TOOL_OPTIONS: { value: Tool; label: string }[] = [
@@ -42,10 +45,11 @@ export function ControlBar({
   minBrushSize = 1,
   maxBrushSize = 28,
   className = '',
+  chromeClassName = 'rounded-xl border border-line bg-surface px-3 py-2',
 }: ControlBarProps) {
   return (
     <section
-      className={`flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-line bg-surface px-3 py-2 ${className}`}
+      className={`flex flex-wrap items-center gap-x-3 gap-y-2 ${chromeClassName} ${className}`}
     >
       {onToolChange && (
         <Segmented options={TOOL_OPTIONS} value={tool} onChange={onToolChange} ariaLabel="Narzędzie" />

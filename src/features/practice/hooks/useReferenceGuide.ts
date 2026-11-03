@@ -46,7 +46,7 @@ export function useReferenceGuide(): UseReferenceGuideResult {
 
   const referenceStrokes = useMemo(
     () => selectedReference?.strokes.map((stroke) => ({
-      brushSize: stroke.brushSize,
+      ...stroke,
       points: stroke.points.map((point) => ({ ...point })),
     })) ?? [],
     [selectedReference],

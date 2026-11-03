@@ -1,7 +1,8 @@
-import { useCallback, useRef } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import type { PointerEvent as ReactPointerEvent } from 'react'
 import { useCanvas } from '../hooks/useCanvas'
 import type { GuideType, Point, SmoothingSettings, Stroke, Tool } from '../../../types/drawing'
+import { IDENTITY_VIEW, type CanvasView } from '../utils/canvasPoint'
 import { CanvasOverlay } from './CanvasOverlay'
 import { CanvasRenderer } from './CanvasRenderer'
 
@@ -22,6 +23,8 @@ type DrawingCanvasProps = {
   userStrokeColor?: string
   referenceStrokeColor?: string
   backgroundImageUrl?: string
+  /** Pozwala rodzicowi ustawić nakładki w układzie rysunku (np. marker błędu). */
+  onViewChange?: (view: CanvasView) => void
 }
 
 export function DrawingCanvas({
@@ -41,9 +44,20 @@ export function DrawingCanvas({
   userStrokeColor,
   referenceStrokeColor,
   backgroundImageUrl,
+  onViewChange,
 }: DrawingCanvasProps) {
   // Imperative cursor ref — no React state, zero re-renders on pointermove
   const cursorRef = useRef<HTMLDivElement>(null)
+  // Widok w stanie Reacta: zmienia się przy tyknięciu kółka, nie co ruch wskaźnika.
+  const [view, setView] = useState<CanvasView>(IDENTITY_VIEW)
+
+  const handleViewChange = useCallback(
+    (next: CanvasView) => {
+      setView(next)
+      onViewChange?.(next)
+    },
+    [onViewChange],
+  )
 
   const { canvasRef, containerRef, onPointerDown, onPointerMove, onPointerUp } = useCanvas({
     userStrokes,
@@ -59,6 +73,7 @@ export function DrawingCanvas({
     onActiveStrokeChange,
     userStrokeColor,
     referenceStrokeColor,
+    onViewChange: handleViewChange,
   })
 
   const updateCursorPreview = useCallback(
@@ -93,8 +108,9 @@ export function DrawingCanvas({
     [onPointerMove, updateCursorPreview],
   )
 
-  // Cursor size derived from brushSize + tool — only recomputed when those change
-  const cursorRadius = tool === 'eraser' ? brushSize * 1.25 : brushSize
+  // Cursor size derived from brushSize + tool — only recomputed when those change.
+  // Mnożone przez skalę, bo pędzel ma na ekranie taką grubość, jaką naprawdę zostawi.
+  const cursorRadius = (tool === 'eraser' ? brushSize * 1.25 : brushSize) * view.scale
   const cursorDiameter = cursorRadius * 2
 
   return (
@@ -102,14 +118,23 @@ export function DrawingCanvas({
       ref={containerRef}
       className="relative h-full w-full overflow-hidden rounded-xl border border-line bg-surface"
     >
-      {/* Background image — lowest layer */}
+      {/* Background image — lowest layer. Jedzie z widokiem, inaczej po przybliżeniu
+          zdjęcie zostałoby na miejscu, a rysunek odjechał. */}
       {backgroundImageUrl && (
-        <img
-          src={backgroundImageUrl}
-          alt=""
-          className="pointer-events-none absolute inset-0 h-full w-full select-none object-contain opacity-20"
-          draggable={false}
-        />
+        <div
+          className="pointer-events-none absolute inset-0"
+          style={{
+            transform: `translate(${view.offsetX}px, ${view.offsetY}px) scale(${view.scale})`,
+            transformOrigin: '0 0',
+          }}
+        >
+          <img
+            src={backgroundImageUrl}
+            alt=""
+            className="h-full w-full select-none object-contain opacity-20"
+            draggable={false}
+          />
+        </div>
       )}
 
       {/* Canvas — drawing surface */}

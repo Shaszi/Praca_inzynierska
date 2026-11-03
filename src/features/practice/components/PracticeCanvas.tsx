@@ -1,5 +1,7 @@
+import { useState } from 'react'
 import type { Point, SmoothingSettings, Stroke, Tool } from '../../../types/drawing'
 import { DrawingCanvas } from '../../canvas/components/DrawingCanvas'
+import { IDENTITY_VIEW, type CanvasView } from '../../canvas/utils/canvasPoint'
 
 type PracticeCanvasProps = {
   userStrokes: Stroke[]
@@ -33,6 +35,8 @@ export function PracticeCanvas({
   onEraseEnd,
   errorMarker = null,
 }: PracticeCanvasProps) {
+  const [view, setView] = useState<CanvasView>(IDENTITY_VIEW)
+
   return (
     <div className="relative h-full w-full">
       <DrawingCanvas
@@ -50,13 +54,19 @@ export function PracticeCanvas({
         showCursorPreview
         guide={null}
         userStrokeColor={userStrokeColor}
-        referenceStrokeColor="#9db2e8"
+        // Akcent, nie bladofiolet: to kreska, którą użytkownik ma narysować TERAZ.
+        referenceStrokeColor="#5a2ee0"
+        onViewChange={setView}
       />
       {errorMarker && (
         <span
-          className="pointer-events-none absolute h-7 w-7 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-[#c25a00] bg-[#c25a00]/10"
-          // +1 px: ramka kontenera płótna
-          style={{ left: errorMarker.x + 1, top: errorMarker.y + 1 }}
+          className="pointer-events-none absolute h-7 w-7 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-danger bg-danger/10"
+          style={{
+            // Marker żyje w DOM, więc trzeba go przeliczyć z układu rysunku na ekran.
+            // +1 px: ramka kontenera płótna.
+            left: errorMarker.x * view.scale + view.offsetX + 1,
+            top: errorMarker.y * view.scale + view.offsetY + 1,
+          }}
           aria-hidden
         />
       )}

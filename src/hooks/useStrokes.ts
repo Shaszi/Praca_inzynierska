@@ -69,7 +69,7 @@ export function useStrokes(initialStrokes: Stroke[] = []): UseStrokesResult {
 
   const addStroke = useCallback((stroke: Stroke) => {
     const nextStroke: Stroke = {
-      brushSize: stroke.brushSize,
+      ...stroke,
       points: stroke.points.map((point) => ({ ...point })),
     }
 

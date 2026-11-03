@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Point, Stroke } from '../../../types/drawing'
-import { evaluateStroke, liveAccuracy } from './strokeEvaluation'
+import { evaluateStroke, liveProgress } from './strokeEvaluation'
 
 // Wzorzec: pozioma linia 500 px, jak zapisana w edytorze (punkty co 3 px).
 const reference: Stroke = {
@@ -112,9 +112,50 @@ describe('evaluateStroke', () => {
   })
 })
 
-describe('liveAccuracy', () => {
+describe('liveProgress', () => {
   it('daje 100 na linii i mało daleko od niej', () => {
-    expect(liveAccuracy(asStroke(drawn(() => 300, { to: 0.4 })), reference)).toBe(100)
-    expect(liveAccuracy(asStroke(drawn(() => 360, { to: 0.4 })), reference)!).toBeLessThan(40)
+    expect(liveProgress(asStroke(drawn(() => 300, { to: 0.4 })), reference)!.accuracy).toBe(100)
+    expect(liveProgress(asStroke(drawn(() => 360, { to: 0.4 })), reference)!.accuracy).toBeLessThan(40)
+  })
+
+  it('pokrycie rośnie razem z narysowaną częścią wzoru', () => {
+    const at = (to: number) => liveProgress(asStroke(drawn(() => 300, { to })), reference)!.coverage
+    expect(at(0.25)).toBeGreaterThan(15)
+    expect(at(0.25)).toBeLessThan(35)
+    expect(at(0.5)).toBeGreaterThan(40)
+    expect(at(0.5)).toBeLessThan(60)
+    expect(at(1)).toBeGreaterThan(95)
+  })
+
+  it('pokrycie jest monotoniczne wzdłuż wzoru', () => {
+    const values = [0.2, 0.4, 0.6, 0.8, 1].map(
+      (to) => liveProgress(asStroke(drawn(() => 300, { to })), reference)!.coverage,
+    )
+    for (let i = 1; i < values.length; i++) expect(values[i]).toBeGreaterThanOrEqual(values[i - 1])
+  })
+
+  it('kreska poza marginesem błędu nie zapełnia paska', () => {
+    const far = liveProgress(asStroke(drawn(() => 500, { to: 1 })), reference)!
+    expect(far.coverage).toBe(0)
+    expect(far.accuracy).toBeLessThan(40)
+  })
+
+  it('kreślenie w jednym miejscu nie zapełnia paska', () => {
+    const scribble = liveProgress(asStroke(drawn(() => 300, { to: 0.05 })), reference)!
+    expect(scribble.coverage).toBeLessThan(10)
+    expect(scribble.accuracy).toBe(100)
+  })
+
+  it('ruch tam i z powrotem nie liczy pokrycia dwa razy', () => {
+    const forward = drawn(() => 300, { to: 0.5 })
+    const thereAndBack = asStroke([...forward, ...[...forward].reverse().map((p, i) => ({ ...p, timestamp: p.timestamp + 2000 + i }))])
+    const once = liveProgress(asStroke(forward), reference)!.coverage
+    expect(liveProgress(thereAndBack, reference)!.coverage).toBe(once)
+  })
+
+  it('margines błędu rośnie z długością wzoru i grubością kreski', () => {
+    const thin = liveProgress(asStroke(drawn(() => 300, { to: 0.5 })), reference)!.tolerancePx
+    const thick = liveProgress(asStroke(drawn(() => 300, { to: 0.5 })), { ...reference, brushSize: 40 })!.tolerancePx
+    expect(thick).toBeGreaterThan(thin)
   })
 })

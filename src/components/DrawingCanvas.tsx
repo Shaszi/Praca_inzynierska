@@ -1,1 +1,0 @@
-export { DrawingCanvas } from '../features/canvas/components/DrawingCanvas'

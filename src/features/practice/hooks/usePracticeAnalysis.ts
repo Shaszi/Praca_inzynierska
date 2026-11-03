@@ -1,19 +1,22 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Point, Stroke } from '../../../types/drawing'
-import { evaluateStroke, liveAccuracy, type StrokeEvaluation } from '../utils/strokeEvaluation'
+import { evaluateStroke, liveProgress, type LiveProgress, type StrokeEvaluation } from '../utils/strokeEvaluation'
 
 type UsePracticeAnalysisResult = {
   evaluation: StrokeEvaluation | null
+  live: LiveProgress | null
   activeStrokeColor: string
   analyzeActiveStroke: (stroke: Stroke | null) => void
   evaluateCompletedStroke: (stroke: Stroke, rawPoints: Point[]) => StrokeEvaluation | null
   resetAnalysis: () => void
 }
 
-const INK = '#16181d'
+// Kolory kreski na płótnie: hexy literalne, bo context 2D nie przyjmie klas Tailwinda.
+// Odpowiadają --color-ink, --color-success, --color-warn i --color-danger z index.css.
+const INK = '#16132a'
 
 export function usePracticeAnalysis(referenceStroke: Stroke | null): UsePracticeAnalysisResult {
-  const [liveScore, setLiveScore] = useState<number | null>(null)
+  const [live, setLive] = useState<LiveProgress | null>(null)
   const [evaluation, setEvaluation] = useState<StrokeEvaluation | null>(null)
   const rafRef = useRef<number | null>(null)
 
@@ -21,13 +24,13 @@ export function usePracticeAnalysis(referenceStroke: Stroke | null): UsePractice
   const analyzeActiveStroke = useCallback(
     (stroke: Stroke | null) => {
       if (!stroke || !referenceStroke) {
-        setLiveScore(null)
+        setLive(null)
         return
       }
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current)
       rafRef.current = requestAnimationFrame(() => {
         rafRef.current = null
-        setLiveScore(liveAccuracy(stroke, referenceStroke))
+        setLive(liveProgress(stroke, referenceStroke))
       })
     },
     [referenceStroke],
@@ -36,7 +39,7 @@ export function usePracticeAnalysis(referenceStroke: Stroke | null): UsePractice
   const evaluateCompletedStroke = useCallback(
     (stroke: Stroke, rawPoints: Point[]) => {
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current)
-      setLiveScore(null)
+      setLive(null)
       if (!referenceStroke) return null
       const result = evaluateStroke(stroke, referenceStroke, rawPoints)
       setEvaluation(result)
@@ -46,7 +49,7 @@ export function usePracticeAnalysis(referenceStroke: Stroke | null): UsePractice
   )
 
   const resetAnalysis = useCallback(() => {
-    setLiveScore(null)
+    setLive(null)
     setEvaluation(null)
   }, [])
 
@@ -57,11 +60,11 @@ export function usePracticeAnalysis(referenceStroke: Stroke | null): UsePractice
   }, [])
 
   const activeStrokeColor = useMemo(() => {
-    if (liveScore === null) return INK
-    if (liveScore >= 80) return '#17703f'
-    if (liveScore >= 55) return '#b86200'
-    return '#b42318'
-  }, [liveScore])
+    if (live === null) return INK
+    if (live.accuracy >= 80) return '#0d7a56'
+    if (live.accuracy >= 55) return '#a04700'
+    return '#c4123f'
+  }, [live])
 
-  return { evaluation, activeStrokeColor, analyzeActiveStroke, evaluateCompletedStroke, resetAnalysis }
+  return { evaluation, live, activeStrokeColor, analyzeActiveStroke, evaluateCompletedStroke, resetAnalysis }
 }

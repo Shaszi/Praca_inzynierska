@@ -16,25 +16,23 @@ function cloneReference(reference: ReferenceDrawing): ReferenceDrawing {
 
 export const referenceService = {
   // Service layer keeps reference business rules independent from UI components.
-  loadReferences(): StorageResult<ReferenceDrawing[]> {
+  loadReferences(): Promise<StorageResult<ReferenceDrawing[]>> {
     return referenceStorageService.loadReferences()
   },
 
-  saveReferences(references: ReferenceDrawing[]): StorageResult<null> {
-    return referenceStorageService.saveReferences(references)
-  },
-
-  createReferenceFromStrokes(
+  createReference(
     nameInput: string,
     strokes: Stroke[],
     existingReferences: ReferenceDrawing[],
-  ): ReferenceDrawing {
-    return {
-      id: createReferenceId(),
-      name: createUniqueReferenceName(nameInput, existingReferences),
-      strokes: cloneStrokes(strokes),
-      createdAt: Date.now(),
-    }
+  ): Promise<StorageResult<ReferenceDrawing | null>> {
+    return referenceStorageService.insertReference(
+      createUniqueReferenceName(nameInput, existingReferences),
+      cloneStrokes(strokes),
+    )
+  },
+
+  deleteReference(id: string): Promise<StorageResult<null>> {
+    return referenceStorageService.deleteReference(id)
   },
 
   parseImportedReference(jsonText: string): StorageResult<ReferenceDrawing> {

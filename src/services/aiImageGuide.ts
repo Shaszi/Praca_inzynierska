@@ -1,6 +1,6 @@
-import Anthropic from '@anthropic-ai/sdk'
 import type { Stroke } from '../types/drawing'
 import { drawStroke } from '../features/canvas/utils/canvasDrawing'
+import { describeAiError, invokeAi } from './aiClient'
 
 export type ImageGuideStep = {
   id: string
@@ -10,53 +10,16 @@ export type ImageGuideStep = {
 
 export type SupportedMediaType = 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif'
 
-function getClient(): Anthropic {
-  const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY
-  if (!apiKey) throw new Error('BRAK_KLUCZA')
-  return new Anthropic({ apiKey, dangerouslyAllowBrowser: true })
-}
-
-function parseStepsFromResponse(text: string): ImageGuideStep[] {
-  // Strip markdown code fences if present
-  const cleaned = text.replace(/```[a-z]*\n?/g, '').trim()
-  const match = cleaned.match(/\{[\s\S]*\}/)
-  if (!match) throw new Error('Brak JSON w odpowiedzi')
-  const parsed = JSON.parse(match[0]) as { steps: { title: string; description: string }[] }
-  return parsed.steps.map((s, i) => ({ id: `step-${i}`, title: s.title, description: s.description }))
-}
-
+// Edge Function zwraca kroki jako JSON zgodny ze schematem (structured outputs).
 export async function generateImageSteps(
   imageBase64: string,
   mediaType: SupportedMediaType,
 ): Promise<ImageGuideStep[]> {
-  const client = getClient()
-  const message = await client.messages.create({
-    model: 'claude-haiku-4-5-20251001',
-    max_tokens: 1024,
-    messages: [
-      {
-        role: 'user',
-        content: [
-          { type: 'image', source: { type: 'base64', media_type: mediaType, data: imageBase64 } },
-          {
-            type: 'text',
-            text: `Jesteś instruktorem rysunku. Przeanalizuj to zdjęcie i stwórz przewodnik rysowania krok po kroku.
-
-Podziel rysunek na 4-8 kroków. Zacznij od największych, podstawowych kształtów i przejdź do szczegółów.
-Każdy krok powinien dotyczyć jednej konkretnej rzeczy do narysowania.
-
-Odpowiedz TYLKO w formacie JSON (bez markdown):
-{"steps": [{"title": "Krótki tytuł kroku", "description": "Dokładna instrukcja co narysować w tym kroku"}, ...]}
-
-Tytuły i opisy muszą być po polsku. Opisy powinny być konkretne i pomocne.`,
-          },
-        ],
-      },
-    ],
+  const { steps } = await invokeAi<{ steps: { title: string; description: string }[] }>({
+    action: 'image-steps',
+    image: { data: imageBase64, mediaType },
   })
-
-  const text = message.content[0].type === 'text' ? message.content[0].text : ''
-  return parseStepsFromResponse(text)
+  return steps.map((step, i) => ({ id: `step-${i}`, title: step.title, description: step.description }))
 }
 
 function renderUserDrawingToBase64(strokes: Stroke[]): string {
@@ -85,51 +48,15 @@ export async function analyzeStrokeAgainstImage(
   stepDescription: string,
 ): Promise<string> {
   try {
-    const userDrawingBase64 = renderUserDrawingToBase64(userStrokes)
-    const client = getClient()
-
-    const message = await client.messages.create({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 300,
-      messages: [
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'image',
-              source: { type: 'base64', media_type: referenceMediaType, data: referenceImageBase64 },
-            },
-            {
-              type: 'image',
-              source: { type: 'base64', media_type: 'image/png', data: userDrawingBase64 },
-            },
-            {
-              type: 'text',
-              text: `Pierwsze zdjęcie: wzorzec (oryginalne zdjęcie).
-Drugie zdjęcie: rysunek studenta wykonany dla kroku "${stepTitle}".
-Opis kroku: "${stepDescription}"
-
-Oceń w 2-3 zdaniach po polsku:
-1. Czy student poprawnie wykonał ten krok? Co konkretnie jest dobrze lub źle?
-2. Co powinien poprawić lub jak może to zrobić lepiej?
-
-Bądź konkretny i pomocny. Porównuj rysunek studenta do wzorca.`,
-            },
-          ],
-        },
-      ],
+    const { text } = await invokeAi<{ text: string }>({
+      action: 'analyze-image-step',
+      referenceImage: { data: referenceImageBase64, mediaType: referenceMediaType },
+      drawingImage: renderUserDrawingToBase64(userStrokes),
+      stepTitle,
+      stepDescription,
     })
-
-    const content = message.content[0]
-    return content.type === 'text' ? content.text.trim() : 'Analiza niedostępna.'
+    return text || 'Analiza niedostępna.'
   } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error)
-    if (msg === 'BRAK_KLUCZA') {
-      return 'Brak klucza API. Utwórz plik .env.local z kluczem VITE_ANTHROPIC_API_KEY=sk-ant-...'
-    }
-    if (msg.includes('401') || msg.includes('authentication')) {
-      return 'Nieprawidłowy klucz API Anthropic. Sprawdź plik .env.local.'
-    }
-    return 'Błąd połączenia z AI. Sprawdź klucz API i połączenie internetowe.'
+    return describeAiError(error)
   }
 }

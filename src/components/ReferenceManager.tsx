@@ -1,1 +1,0 @@
-export { ReferenceManager } from '../features/teacher/components/ReferenceManager'

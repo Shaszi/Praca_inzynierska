@@ -1,1 +1,0 @@
-export { Toolbar } from '../features/teacher/components/Toolbar'

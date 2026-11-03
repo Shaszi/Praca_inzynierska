@@ -1,112 +1,67 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { Stroke } from '../../../types/drawing'
-import {
-  calculateStrokeSimilarity,
-  type StrokeSimilarityResult,
-} from '../utils/strokeAnalysis'
-
-const DEFAULT_FEEDBACK = 'Draw over the guide to get feedback.'
+import type { Point, Stroke } from '../../../types/drawing'
+import { evaluateStroke, liveAccuracy, type StrokeEvaluation } from '../utils/strokeEvaluation'
 
 type UsePracticeAnalysisResult = {
-  liveResult: StrokeSimilarityResult | null
-  lastResult: StrokeSimilarityResult | null
-  feedbackText: string
-  similarityPercent: number | null
+  evaluation: StrokeEvaluation | null
   activeStrokeColor: string
   analyzeActiveStroke: (stroke: Stroke | null) => void
-  analyzeCompletedStroke: (stroke: Stroke) => StrokeSimilarityResult | null
+  evaluateCompletedStroke: (stroke: Stroke, rawPoints: Point[]) => StrokeEvaluation | null
   resetAnalysis: () => void
 }
 
-function pickBestReferenceMatch(
-  stroke: Stroke,
-  referenceStrokes: Stroke[],
-): StrokeSimilarityResult | null {
-  if (referenceStrokes.length === 0) {
-    return null
-  }
+const INK = '#16181d'
 
-  let bestMatch: StrokeSimilarityResult | null = null
-  for (const referenceStroke of referenceStrokes) {
-    const similarity = calculateStrokeSimilarity(stroke, referenceStroke)
-    if (!bestMatch || similarity.averageDistance < bestMatch.averageDistance) {
-      bestMatch = similarity
-    }
-  }
-
-  return bestMatch
-}
-
-export function usePracticeAnalysis(referenceStrokes: Stroke[]): UsePracticeAnalysisResult {
-  const [liveResult, setLiveResult] = useState<StrokeSimilarityResult | null>(null)
-  const [lastResult, setLastResult] = useState<StrokeSimilarityResult | null>(null)
+export function usePracticeAnalysis(referenceStroke: Stroke | null): UsePracticeAnalysisResult {
+  const [liveScore, setLiveScore] = useState<number | null>(null)
+  const [evaluation, setEvaluation] = useState<StrokeEvaluation | null>(null)
   const rafRef = useRef<number | null>(null)
 
-  const runAnalysis = useCallback(
-    (stroke: Stroke) => pickBestReferenceMatch(stroke, referenceStrokes),
-    [referenceStrokes],
-  )
-
+  // W trakcie rysowania liczymy tylko odległość od wzoru — co klatkę, bez blokowania rysowania.
   const analyzeActiveStroke = useCallback(
     (stroke: Stroke | null) => {
-      if (!stroke || stroke.points.length < 2 || referenceStrokes.length === 0) {
-        setLiveResult(null)
+      if (!stroke || !referenceStroke) {
+        setLiveScore(null)
         return
       }
-
-      if (rafRef.current !== null) {
-        cancelAnimationFrame(rafRef.current)
-      }
-
+      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current)
       rafRef.current = requestAnimationFrame(() => {
-        setLiveResult(runAnalysis(stroke))
+        rafRef.current = null
+        setLiveScore(liveAccuracy(stroke, referenceStroke))
       })
     },
-    [referenceStrokes.length, runAnalysis],
+    [referenceStroke],
   )
 
-  const analyzeCompletedStroke = useCallback(
-    (stroke: Stroke) => {
-      const result = runAnalysis(stroke)
-      setLastResult(result)
-      setLiveResult(null)
+  const evaluateCompletedStroke = useCallback(
+    (stroke: Stroke, rawPoints: Point[]) => {
+      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current)
+      setLiveScore(null)
+      if (!referenceStroke) return null
+      const result = evaluateStroke(stroke, referenceStroke, rawPoints)
+      setEvaluation(result)
       return result
     },
-    [runAnalysis],
+    [referenceStroke],
   )
 
   const resetAnalysis = useCallback(() => {
-    setLiveResult(null)
-    setLastResult(null)
+    setLiveScore(null)
+    setEvaluation(null)
   }, [])
 
   useEffect(() => {
     return () => {
-      if (rafRef.current !== null) {
-        cancelAnimationFrame(rafRef.current)
-      }
+      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current)
     }
   }, [])
 
-  const activeResult = liveResult ?? lastResult
-  const feedbackText = activeResult?.feedback ?? DEFAULT_FEEDBACK
-  const similarityPercent = activeResult ? activeResult.score / 100 : null
-
   const activeStrokeColor = useMemo(() => {
-    if (!liveResult) return '#1f2937'
-    if (liveResult.score >= 80) return '#15803d'
-    if (liveResult.score >= 60) return '#ca8a04'
-    return '#b91c1c'
-  }, [liveResult])
+    if (liveScore === null) return INK
+    if (liveScore >= 80) return '#17703f'
+    if (liveScore >= 55) return '#b86200'
+    return '#b42318'
+  }, [liveScore])
 
-  return {
-    liveResult,
-    lastResult,
-    feedbackText,
-    similarityPercent,
-    activeStrokeColor,
-    analyzeActiveStroke,
-    analyzeCompletedStroke,
-    resetAnalysis,
-  }
+  return { evaluation, activeStrokeColor, analyzeActiveStroke, evaluateCompletedStroke, resetAnalysis }
 }

@@ -1,5 +1,32 @@
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
 @import 'tailwindcss';
+
+@theme {
+  --font-sans: 'IBM Plex Sans', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+
+  /* Chłodna, narzędziowa paleta: szare tło, białe karty, grafitowy tusz, niebieski akcent */
+  --color-paper: #eceef2;
+  --color-paper-dim: #e3e6eb;
+  --color-surface: #ffffff;
+  --color-surface-dim: #f5f6f8;
+  --color-line: #dce0e6;
+  --color-line-strong: #c4cad3;
+  --color-ink: #16181d;
+  --color-ink-hover: #2b2f37;
+  --color-ink-soft: #3c424d;
+  --color-ink-faint: #555c69;
+  --color-accent: #2350c8;
+  --color-accent-strong: #16388f;
+  --color-accent-soft: #eef2fc;
+  --color-accent-line: #bfcdf2;
+  --color-success: #17703f;
+  --color-success-soft: #e9f5ee;
+  --color-warn: #9a4a00;
+  --color-warn-soft: #fff3e6;
+  --color-danger: #b42318;
+  --color-danger-soft: #fdecea;
+}
 
 :root {
   color-scheme: light;
@@ -12,21 +39,28 @@
 body {
   margin: 0;
   min-height: 100vh;
-  font-family: 'Space Grotesk', 'Segoe UI', sans-serif;
-  background-color: #f8fafc;
-  color: #0f172a;
-  background-image:
-    radial-gradient(circle at 15% 20%, rgba(14, 165, 233, 0.08), transparent 34%),
-    radial-gradient(circle at 90% 2%, rgba(99, 102, 241, 0.05), transparent 22%),
-    linear-gradient(180deg, #f8fafc 0%, #eef2ff 100%);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.45;
+  background-color: var(--color-paper);
+  color: var(--color-ink);
+  -webkit-font-smoothing: antialiased;
 }
 
 #root {
   min-height: 100vh;
 }
 
-button,
-input,
-select {
-  font: inherit;
+/* W warstwie base, żeby klasy Tailwinda (np. text-[13px]) mogły to nadpisać. */
+@layer base {
+  button,
+  input,
+  select {
+    font: inherit;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
 }

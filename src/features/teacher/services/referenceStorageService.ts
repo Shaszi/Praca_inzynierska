@@ -1,71 +1,48 @@
-import type { ReferenceDrawing } from '../../../types/drawing'
-import { cloneStrokes } from '../../../utils/strokes'
-import { normalizeReference, validateReference } from '../utils/referenceValidation'
+import { supabase } from '../../../lib/supabase'
+import type { Json, Tables } from '../../../lib/database.types'
+import type { ReferenceDrawing, Stroke } from '../../../types/drawing'
+import { normalizeReference } from '../utils/referenceValidation'
 import type { StorageResult } from './storageTypes'
 
-const STORAGE_KEY = 'drawing-training-references'
-
-function cloneReferences(references: ReferenceDrawing[]): ReferenceDrawing[] {
-  return references.map((reference) => ({
-    ...reference,
-    strokes: cloneStrokes(reference.strokes),
-  }))
+function toReference(row: Tables<'drawing_references'>): ReferenceDrawing | null {
+  return normalizeReference({
+    id: row.id,
+    name: row.name,
+    strokes: row.strokes,
+    createdAt: new Date(row.created_at).getTime(),
+  })
 }
 
+// Wzorce są przechowywane w tabeli drawing_references; RLS ogranicza je do zalogowanego użytkownika.
 export const referenceStorageService = {
-  loadReferences(): StorageResult<ReferenceDrawing[]> {
-    if (typeof window === 'undefined') {
-      return { data: [], error: null }
+  async loadReferences(): Promise<StorageResult<ReferenceDrawing[]>> {
+    const { data, error } = await supabase
+      .from('drawing_references')
+      .select('*')
+      .order('created_at', { ascending: false })
+
+    if (error) return { data: [], error: 'Nie udało się pobrać wzorców.' }
+
+    const references = data.map(toReference).filter((reference): reference is ReferenceDrawing => reference !== null)
+    return {
+      data: references,
+      error: references.length === data.length ? null : 'Część wzorców jest uszkodzona i została pominięta.',
     }
-
-    let rawValue: string | null
-    try {
-      rawValue = window.localStorage.getItem(STORAGE_KEY)
-    } catch {
-      return { data: [], error: 'Unable to read references from local storage.' }
-    }
-
-    if (!rawValue) {
-      return { data: [], error: null }
-    }
-
-    let parsed: unknown
-    try {
-      parsed = JSON.parse(rawValue)
-    } catch {
-      return { data: [], error: 'Saved references are corrupted and could not be parsed.' }
-    }
-
-    if (!Array.isArray(parsed)) {
-      return { data: [], error: 'Saved references have an invalid format.' }
-    }
-
-    const normalizedReferences = parsed
-      .map((candidate) => normalizeReference(candidate))
-      .filter((reference): reference is ReferenceDrawing => reference !== null)
-
-    const error =
-      normalizedReferences.length === parsed.length
-        ? null
-        : 'Some saved references were invalid and were ignored.'
-
-    return { data: cloneReferences(normalizedReferences), error }
   },
 
-  saveReferences(references: ReferenceDrawing[]): StorageResult<null> {
-    if (typeof window === 'undefined') {
-      return { data: null, error: null }
-    }
+  async insertReference(name: string, strokes: Stroke[]): Promise<StorageResult<ReferenceDrawing | null>> {
+    const { data, error } = await supabase
+      .from('drawing_references')
+      .insert({ name, strokes: strokes as unknown as Json[] })
+      .select('*')
+      .single()
 
-    if (!references.every((reference) => validateReference(reference))) {
-      return { data: null, error: 'Cannot save invalid reference data.' }
-    }
+    if (error) return { data: null, error: 'Nie udało się zapisać wzorca.' }
+    return { data: toReference(data), error: null }
+  },
 
-    try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(references))
-      return { data: null, error: null }
-    } catch {
-      return { data: null, error: 'Unable to save references to local storage.' }
-    }
+  async deleteReference(id: string): Promise<StorageResult<null>> {
+    const { error } = await supabase.from('drawing_references').delete().eq('id', id)
+    return { data: null, error: error ? 'Nie udało się usunąć wzorca.' : null }
   },
 }

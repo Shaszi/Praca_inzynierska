@@ -11,6 +11,14 @@ export type Stroke = {
 
 export type Tool = 'brush' | 'eraser'
 
+export type SmoothingMode = 'off' | 'adaptive' | 'rope'
+
+export type SmoothingSettings = {
+  mode: SmoothingMode
+  // 0–100, interpreted per mode (filter cutoff / rope length / simplification tolerance)
+  strength: number
+}
+
 export type GuideType = 'line' | 'circle'
 
 export type Guide = {

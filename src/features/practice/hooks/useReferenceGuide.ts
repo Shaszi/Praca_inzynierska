@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { referenceService } from '../../teacher/services/referenceService'
 import type { Guide, ReferenceDrawing, Stroke } from '../../../types/drawing'
 
@@ -14,11 +14,25 @@ type UseReferenceGuideResult = {
 }
 
 export function useReferenceGuide(): UseReferenceGuideResult {
-  const [initialLoad] = useState(() => referenceService.loadReferences())
-  const [references, setReferences] = useState<ReferenceDrawing[]>(initialLoad.data)
+  const [references, setReferences] = useState<ReferenceDrawing[]>([])
   const [selectedReferenceId, setSelectedReferenceId] = useState('')
-  const [isLoadingReferences, setIsLoadingReferences] = useState(false)
-  const [errorMessage, setErrorMessage] = useState<string | null>(initialLoad.error)
+  const [isLoadingReferences, setIsLoadingReferences] = useState(true)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [reloadToken, setReloadToken] = useState(0)
+
+  useEffect(() => {
+    let cancelled = false
+    referenceService.loadReferences().then(({ data, error }) => {
+      if (cancelled) return
+      setReferences(data)
+      setErrorMessage(error)
+      setSelectedReferenceId((current) => (data.some((reference) => reference.id === current) ? current : ''))
+      setIsLoadingReferences(false)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [reloadToken])
 
   const selectedReference = useMemo(
     () => references.find((reference) => reference.id === selectedReferenceId) ?? null,
@@ -27,16 +41,8 @@ export function useReferenceGuide(): UseReferenceGuideResult {
 
   const refreshReferences = useCallback(() => {
     setIsLoadingReferences(true)
-    const { data, error } = referenceService.loadReferences()
-    setReferences(data)
-    setErrorMessage(error)
-
-    if (!data.some((reference) => reference.id === selectedReferenceId)) {
-      setSelectedReferenceId('')
-    }
-
-    setIsLoadingReferences(false)
-  }, [selectedReferenceId])
+    setReloadToken((token) => token + 1)
+  }, [])
 
   const referenceStrokes = useMemo(
     () => selectedReference?.strokes.map((stroke) => ({

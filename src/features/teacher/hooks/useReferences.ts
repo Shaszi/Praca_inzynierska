@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ReferenceDrawing, Stroke } from '../../../types/drawing'
 import { downloadJSON, sanitizeFileName } from '../../../utils/file'
 import { referenceService } from '../services/referenceService'
@@ -9,84 +9,111 @@ type UseReferencesResult = {
   selectedReference: ReferenceDrawing | null
   selectedReferenceId: string
   setSelectedReferenceId: (id: string) => void
-  saveReference: (strokes: Stroke[]) => void
-  loadReference: () => Stroke[] | null
-  deleteReference: () => void
-  exportReference: () => void
+  saveReference: (strokes: Stroke[], name: string) => Promise<boolean>
+  loadReference: (id: string) => Stroke[] | null
+  deleteReference: (id: string) => Promise<void>
+  exportReference: (id: string) => void
   importReference: (file: File) => Promise<void>
   statusMessage: string
   errorMessage: string | null
+  isLoading: boolean
   isSaving: boolean
   isImporting: boolean
 }
 
 export function useReferences(): UseReferencesResult {
   // Keeping reference state/actions in a hook lets UI stay presentation-only and reusable.
-  const [initialLoad] = useState(() => referenceService.loadReferences())
-  const [references, setReferences] = useState<ReferenceDrawing[]>(initialLoad.data)
+  const [references, setReferences] = useState<ReferenceDrawing[]>([])
   const [selectedReferenceId, setSelectedReferenceId] = useState('')
-  const [statusMessage, setStatusMessage] = useState('Draw strokes and save them as a reusable reference.')
-  const [errorMessage, setErrorMessage] = useState<string | null>(initialLoad.error)
+  const [statusMessage, setStatusMessage] = useState('Narysuj kreski i zapisz je jako wzorzec do ćwiczeń.')
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [isImporting, setIsImporting] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    referenceService.loadReferences().then(({ data, error }) => {
+      if (cancelled) return
+      setReferences(data)
+      setErrorMessage(error)
+      setIsLoading(false)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const selectedReference = useMemo(
     () => references.find((reference) => reference.id === selectedReferenceId) ?? null,
     [references, selectedReferenceId],
   )
 
-  const commitReferences = useCallback((nextReferences: ReferenceDrawing[]) => {
-    setReferences(nextReferences)
-    const saveResult = referenceService.saveReferences(nextReferences)
-    setErrorMessage(saveResult.error)
-  }, [])
+  const persistNewReference = useCallback(
+    async (name: string, strokes: Stroke[]) => {
+      const { data: reference, error } = await referenceService.createReference(name, strokes, references)
+      if (error || !reference) {
+        setErrorMessage(error ?? 'Nie udało się zapisać wzorca.')
+        return null
+      }
+      setReferences((current) => [reference, ...current])
+      setSelectedReferenceId(reference.id)
+      return reference
+    },
+    [references],
+  )
 
-  const saveReference = useCallback((strokes: Stroke[]) => {
+  const saveReference = useCallback(async (strokes: Stroke[], name: string) => {
     setErrorMessage(null)
-    if (isStrokeCollectionEmpty(strokes)) return setStatusMessage('Draw at least one stroke before saving.')
-
-    const nameInput = window.prompt('Reference name', `Reference ${references.length + 1}`)
-    if (nameInput === null) return setStatusMessage('Save cancelled.')
+    if (isStrokeCollectionEmpty(strokes)) {
+      setStatusMessage('Narysuj co najmniej jedną kreskę przed zapisem.')
+      return false
+    }
 
     setIsSaving(true)
     try {
-      const reference = referenceService.createReferenceFromStrokes(nameInput, strokes, references)
-      commitReferences([reference, ...references])
-      setSelectedReferenceId(reference.id)
-      setStatusMessage(`Saved "${reference.name}".`)
-    } catch {
-      setErrorMessage('Unexpected error while saving the reference.')
+      const reference = await persistNewReference(name.trim() || `Wzorzec ${references.length + 1}`, strokes)
+      if (reference) setStatusMessage(`Zapisano „${reference.name}”.`)
+      return reference !== null
     } finally {
       setIsSaving(false)
     }
-  }, [commitReferences, references])
+  }, [persistNewReference, references.length])
 
-  const loadReference = useCallback((): Stroke[] | null => {
+  const loadReference = useCallback((id: string): Stroke[] | null => {
     setErrorMessage(null)
-    if (!selectedReference) return setStatusMessage('Select a saved reference first.'), null
-    setStatusMessage(`Loaded "${selectedReference.name}" into the canvas.`)
-    return referenceService.cloneReferenceStrokes(selectedReference)
-  }, [selectedReference])
+    const target = references.find((reference) => reference.id === id)
+    if (!target) return null
+    setSelectedReferenceId(id)
+    setStatusMessage(`Wczytano „${target.name}” na płótno.`)
+    return referenceService.cloneReferenceStrokes(target)
+  }, [references])
 
-  const deleteReference = useCallback(() => {
+  const deleteReference = useCallback(async (id: string) => {
     setErrorMessage(null)
-    if (!selectedReference) return setStatusMessage('Select a saved reference to delete.')
-    commitReferences(references.filter((reference) => reference.id !== selectedReference.id))
-    setSelectedReferenceId('')
-    setStatusMessage(`Deleted "${selectedReference.name}".`)
-  }, [commitReferences, references, selectedReference])
+    const target = references.find((reference) => reference.id === id)
+    if (!target) return
 
-  const exportReference = useCallback(() => {
+    const { error } = await referenceService.deleteReference(id)
+    if (error) return setErrorMessage(error)
+
+    setReferences((current) => current.filter((reference) => reference.id !== id))
+    setSelectedReferenceId((current) => (current === id ? '' : current))
+    setStatusMessage(`Usunięto „${target.name}”.`)
+  }, [references])
+
+  const exportReference = useCallback((id: string) => {
     setErrorMessage(null)
-    if (!selectedReference) return setStatusMessage('Select a saved reference to export.')
+    const target = references.find((reference) => reference.id === id)
+    if (!target) return
 
     try {
-      downloadJSON(selectedReference, `${sanitizeFileName(selectedReference.name)}.json`)
-      setStatusMessage(`Exported "${selectedReference.name}" as JSON.`)
+      downloadJSON(target, `${sanitizeFileName(target.name)}.json`)
+      setStatusMessage(`Wyeksportowano „${target.name}” do JSON.`)
     } catch {
-      setErrorMessage('Failed to export reference.')
+      setErrorMessage('Nie udało się wyeksportować wzorca.')
     }
-  }, [selectedReference])
+  }, [references])
 
   const importReference = useCallback(async (file: File) => {
     setErrorMessage(null)
@@ -95,18 +122,16 @@ export function useReferences(): UseReferencesResult {
     try {
       const parsedResult = referenceService.parseImportedReference(await file.text())
       if (parsedResult.error) return void setErrorMessage(parsedResult.error)
-      if (isStrokeCollectionEmpty(parsedResult.data.strokes)) return void setErrorMessage('Imported reference contains no strokes.')
+      if (isStrokeCollectionEmpty(parsedResult.data.strokes)) return void setErrorMessage('Zaimportowany wzorzec nie zawiera kresek.')
 
-      const importedReference = referenceService.prepareImportedReference(parsedResult.data, references)
-      commitReferences([importedReference, ...references])
-      setSelectedReferenceId(importedReference.id)
-      setStatusMessage(`Imported "${importedReference.name}".`)
+      const reference = await persistNewReference(parsedResult.data.name, parsedResult.data.strokes)
+      if (reference) setStatusMessage(`Zaimportowano „${reference.name}”.`)
     } catch {
-      setErrorMessage('Failed to read the selected file.')
+      setErrorMessage('Nie udało się odczytać pliku.')
     } finally {
       setIsImporting(false)
     }
-  }, [commitReferences, references])
+  }, [persistNewReference])
 
   return {
     references,
@@ -120,6 +145,7 @@ export function useReferences(): UseReferencesResult {
     importReference,
     statusMessage,
     errorMessage,
+    isLoading,
     isSaving,
     isImporting,
   }

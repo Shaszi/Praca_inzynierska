@@ -1,24 +1,14 @@
 import { useCallback, useRef } from 'react'
 import type { ChangeEvent } from 'react'
+import { Button } from '../../../components/ui'
 
-type ImportExportControlsProps = {
-  onExport: () => void
+type ImportControlProps = {
   onImport: (file: File) => Promise<void>
   isImporting: boolean
-  canExport: boolean
 }
 
-export function ImportExportControls({
-  onExport,
-  onImport,
-  isImporting,
-  canExport,
-}: ImportExportControlsProps) {
+export function ImportControl({ onImport, isImporting }: ImportControlProps) {
   const inputRef = useRef<HTMLInputElement>(null)
-
-  const openFilePicker = useCallback(() => {
-    inputRef.current?.click()
-  }, [])
 
   const handleFileChange = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {
@@ -31,23 +21,10 @@ export function ImportExportControls({
   )
 
   return (
-    <div className="flex flex-wrap items-center gap-3">
-      <button
-        type="button"
-        onClick={onExport}
-        disabled={!canExport}
-        className="rounded-lg border border-slate-300 bg-slate-50 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:border-slate-400 disabled:cursor-not-allowed disabled:opacity-60"
-      >
-        Export
-      </button>
-      <button
-        type="button"
-        onClick={openFilePicker}
-        disabled={isImporting}
-        className="rounded-lg border border-slate-300 bg-slate-50 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:border-slate-400 disabled:cursor-not-allowed disabled:opacity-60"
-      >
-        {isImporting ? 'Importing...' : 'Import JSON'}
-      </button>
+    <>
+      <Button size="sm" onClick={() => inputRef.current?.click()} disabled={isImporting}>
+        {isImporting ? 'Importowanie…' : 'Importuj z JSON'}
+      </Button>
       <input
         ref={inputRef}
         type="file"
@@ -55,6 +32,6 @@ export function ImportExportControls({
         onChange={handleFileChange}
         className="hidden"
       />
-    </div>
+    </>
   )
 }

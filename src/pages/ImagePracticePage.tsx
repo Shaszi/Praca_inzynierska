@@ -1,5 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
+import { ArrowRightIcon, ImageIcon } from '../components/icons'
+import { Button, Divider, PageHeader, rangeClass, Segmented, Spinner, TypingDots } from '../components/ui'
 import { DrawingCanvas } from '../features/canvas/components/DrawingCanvas'
+import { SmoothingControl } from '../features/canvas/components/SmoothingControl'
+import { useSmoothingSettings } from '../features/canvas/hooks/useSmoothingSettings'
+import { StrokeThumbnail } from '../features/progress/components/StrokeThumbnail'
+import { usePracticeSession } from '../features/progress/hooks/usePracticeSession'
 import { useStrokes } from '../hooks/useStrokes'
 import {
   analyzeStrokeAgainstImage,
@@ -7,10 +14,16 @@ import {
   type ImageGuideStep,
   type SupportedMediaType,
 } from '../services/aiImageGuide'
+import { describeAiError } from '../services/aiClient'
 import type { Point, Stroke, Tool } from '../types/drawing'
 import { eraseAtPoint } from '../utils/eraser'
 
 type Phase = 'upload' | 'analyzing' | 'practicing' | 'done'
+
+const TOOL_OPTIONS: { value: Tool; label: string }[] = [
+  { value: 'brush', label: 'Pędzel' },
+  { value: 'eraser', label: 'Gumka' },
+]
 
 const ACCEPTED_TYPES: SupportedMediaType[] = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
 
@@ -26,16 +39,6 @@ function readFileAsBase64(file: File): Promise<{ base64: string; mediaType: Supp
   })
 }
 
-function LoadingDots() {
-  return (
-    <span className="inline-flex items-center gap-1">
-      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-sky-500 [animation-delay:0ms]" />
-      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-sky-500 [animation-delay:150ms]" />
-      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-sky-500 [animation-delay:300ms]" />
-    </span>
-  )
-}
-
 export function ImagePracticePage() {
   const [phase, setPhase] = useState<Phase>('upload')
   const [imageUrl, setImageUrl] = useState<string | null>(null)
@@ -45,9 +48,11 @@ export function ImagePracticePage() {
   const [stepIndex, setStepIndex] = useState(0)
   const [analyzeError, setAnalyzeError] = useState<string | null>(null)
   const [isDragging, setIsDragging] = useState(false)
+  const [imageName, setImageName] = useState('')
 
   const [brushSize, setBrushSize] = useState(5)
   const [tool, setTool] = useState<Tool>('brush')
+  const { smoothing, setSmoothing } = useSmoothingSettings()
   const [isAnalyzingAI, setIsAnalyzingAI] = useState(false)
   const [aiFeedback, setAiFeedback] = useState<string | null>(null)
   const [awaitingNext, setAwaitingNext] = useState(false)
@@ -58,6 +63,15 @@ export function ImagePracticePage() {
   } = useStrokes()
 
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const sessionParams = useMemo(
+    () =>
+      steps.length > 0
+        ? { mode: 'image' as const, title: imageName || 'Rysunek ze zdjęcia', stepsTotal: steps.length }
+        : null,
+    [imageName, steps.length],
+  )
+  const { recordAttempt, complete: completeSession, reset: resetSession, saveError } = usePracticeSession(sessionParams)
 
   const processFile = useCallback(async (file: File) => {
     if (!ACCEPTED_TYPES.includes(file.type as SupportedMediaType)) {
@@ -71,12 +85,13 @@ export function ImagePracticePage() {
       setImageUrl(URL.createObjectURL(file))
       setImageBase64(base64)
       setMediaType(mt)
+      setImageName(file.name.replace(/\.[^.]+$/, ''))
       const generatedSteps = await generateImageSteps(base64, mt)
       setSteps(generatedSteps)
       setStepIndex(0)
       setPhase('practicing')
-    } catch {
-      setAnalyzeError('Błąd analizy zdjęcia. Sprawdź klucz API i spróbuj ponownie.')
+    } catch (error) {
+      setAnalyzeError(describeAiError(error))
       setPhase('upload')
     }
   }, [])
@@ -105,23 +120,25 @@ export function ImagePracticePage() {
     setIsAnalyzingAI(true)
     setAiFeedback(null)
     setAwaitingNext(false)
+    let feedback: string | null = null
     try {
-      const feedback = await analyzeStrokeAgainstImage(
+      feedback = await analyzeStrokeAgainstImage(
         [...strokes, stroke], imageBase64, mediaType, currentStep.title, currentStep.description,
       )
       setAiFeedback(feedback)
     } finally {
       setIsAnalyzingAI(false)
       setAwaitingNext(true)
+      recordAttempt({ stepIndex, stroke, score: null, aiFeedback: feedback })
     }
-  }, [addStroke, currentStep, strokes, imageBase64, mediaType])
+  }, [addStroke, currentStep, strokes, imageBase64, mediaType, recordAttempt, stepIndex])
 
   const handleNextStep = useCallback(() => {
-    if (stepIndex >= steps.length - 1) { setPhase('done'); return }
+    if (stepIndex >= steps.length - 1) { setPhase('done'); completeSession(strokes); return }
     setStepIndex((i) => i + 1)
     setAiFeedback(null)
     setAwaitingNext(false)
-  }, [stepIndex, steps.length])
+  }, [stepIndex, steps.length, completeSession, strokes])
 
   const handleRetry = useCallback(() => {
     undoStroke(); setAiFeedback(null); setAwaitingNext(false); setIsAnalyzingAI(false)
@@ -132,13 +149,13 @@ export function ImagePracticePage() {
   }, [undoStroke])
 
   const handleClear = useCallback(() => {
-    clearStrokes(); setAiFeedback(null); setAwaitingNext(false); setIsAnalyzingAI(false); setStepIndex(0)
-  }, [clearStrokes])
+    clearStrokes(); setAiFeedback(null); setAwaitingNext(false); setIsAnalyzingAI(false); setStepIndex(0); resetSession()
+  }, [clearStrokes, resetSession])
 
   const resetAll = useCallback(() => {
     setPhase('upload'); setImageUrl(null); setImageBase64(''); setSteps([])
-    clearStrokes(); setAiFeedback(null); setAwaitingNext(false); setStepIndex(0)
-  }, [clearStrokes])
+    clearStrokes(); setAiFeedback(null); setAwaitingNext(false); setStepIndex(0); resetSession()
+  }, [clearStrokes, resetSession])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -151,43 +168,41 @@ export function ImagePracticePage() {
     return () => window.removeEventListener('keydown', onKey)
   }, [canUndo, canRedo, handleUndo, redoStroke])
 
-  // Shared wrapper — extends edge-to-edge by cancelling AppLayout padding
-  const fullArea = 'relative -m-4 md:-m-6 flex min-h-0 flex-1 overflow-hidden'
+  // Shared wrapper — full-height card holding the canvas and floating panels
+  const fullArea = 'relative flex min-h-[600px] flex-1 overflow-hidden rounded-2xl border border-line bg-surface'
 
   // --- Upload phase ---
   if (phase === 'upload') {
     return (
-      <section className={fullArea}>
-        <div className="flex w-full flex-col items-center justify-center gap-6 p-6">
-          <div className="text-center">
-            <p className="text-xs uppercase tracking-[0.3em] text-slate-500">Tryb zdjęcia</p>
-            <h2 className="mt-2 text-3xl font-semibold text-slate-900">Ćwicz ze swojego zdjęcia</h2>
-            <p className="mt-2 text-slate-500">
-              Wgraj zdjęcie — AI podzieli je na kroki i poprowadzi Cię przez rysowanie.
-            </p>
+      <section className="flex w-full flex-1 flex-col gap-6">
+        <PageHeader
+          title="Rysuj ze zdjęcia"
+          description="Wgraj zdjęcie, a AI rozpisze je na kroki — od głównych brył do detali — i oceni każdy etap."
+        />
+        <div
+          role="button"
+          tabIndex={0}
+          onDrop={handleDrop}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onClick={() => fileInputRef.current?.click()}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') fileInputRef.current?.click() }}
+          className={`flex flex-1 cursor-pointer flex-col items-center justify-center gap-4 rounded-2xl border-2 border-dashed px-6 py-20 text-center transition ${
+            isDragging ? 'border-accent bg-accent-soft/40' : 'border-line-strong bg-surface hover:border-accent hover:bg-accent-soft/40'
+          }`}
+        >
+          <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-paper-dim text-ink">
+            <ImageIcon className="h-7 w-7" />
+          </span>
+          <div>
+            <p className="font-medium text-ink">Przeciągnij zdjęcie tutaj albo kliknij, żeby wybrać plik</p>
+            <p className="mt-1 text-sm text-ink-faint">JPG, PNG, WebP lub GIF</p>
           </div>
-          <div
-            onDrop={handleDrop}
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onClick={() => fileInputRef.current?.click()}
-            className={`flex w-full max-w-md cursor-pointer flex-col items-center gap-4 rounded-2xl border-2 border-dashed p-12 transition ${
-              isDragging ? 'border-sky-400 bg-sky-50' : 'border-slate-300 bg-white hover:border-sky-300 hover:bg-sky-50/50'
-            }`}
-          >
-            <svg className="h-12 w-12 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
-            </svg>
-            <div className="text-center">
-              <p className="font-medium text-slate-700">Przeciągnij zdjęcie lub kliknij</p>
-              <p className="mt-1 text-sm text-slate-400">JPG, PNG, WebP, GIF</p>
-            </div>
-            <input ref={fileInputRef} type="file" accept={ACCEPTED_TYPES.join(',')} className="hidden" onChange={handleFileChange} />
-          </div>
-          {analyzeError && (
-            <p className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-2 text-sm text-rose-700">{analyzeError}</p>
-          )}
+          <input ref={fileInputRef} type="file" accept={ACCEPTED_TYPES.join(',')} className="hidden" onChange={handleFileChange} />
         </div>
+        {analyzeError && (
+          <p className="rounded-xl bg-danger-soft px-3.5 py-3 text-sm font-medium text-danger">{analyzeError}</p>
+        )}
       </section>
     )
   }
@@ -195,11 +210,11 @@ export function ImagePracticePage() {
   // --- Analyzing phase ---
   if (phase === 'analyzing') {
     return (
-      <section className={fullArea}>
-        <div className="flex w-full flex-col items-center justify-center gap-4">
-          <div className="h-10 w-10 animate-spin rounded-full border-4 border-sky-200 border-t-sky-500" />
-          <p className="text-lg font-medium text-slate-700">Analizuję zdjęcie...</p>
-          <p className="text-sm text-slate-400">AI przygotowuje plan rysowania</p>
+      <section className="flex w-full flex-1 flex-col items-center justify-center gap-4 text-center">
+        <Spinner className="h-8 w-8" />
+        <div>
+          <p className="text-[22px] font-bold text-ink">Analizuję zdjęcie</p>
+          <p className="mt-1 text-ink-soft">AI przygotowuje plan rysowania krok po kroku.</p>
         </div>
       </section>
     )
@@ -208,20 +223,32 @@ export function ImagePracticePage() {
   // --- Done phase ---
   if (phase === 'done') {
     return (
-      <section className={fullArea}>
-        <div className="flex w-full flex-col items-center justify-center gap-6">
-          <div className="text-center">
-            <p className="text-5xl">🎉</p>
-            <h2 className="mt-4 text-3xl font-semibold text-slate-900">Ćwiczenie ukończone!</h2>
-            <p className="mt-2 text-slate-500">Przeszedłeś przez wszystkie {steps.length} kroków.</p>
+      <section className="flex w-full flex-1 flex-col items-center justify-center gap-8 py-8 text-center">
+        <div className="flex items-center gap-4">
+          {imageUrl && (
+            <img src={imageUrl} alt="Zdjęcie wzorcowe" className="h-32 w-32 rounded-2xl border border-line object-cover sm:h-40 sm:w-40" />
+          )}
+          <div className="h-32 w-32 rounded-2xl border border-line bg-surface p-3 sm:h-40 sm:w-40">
+            <StrokeThumbnail strokes={strokes} className="h-full w-full" />
           </div>
-          <button
-            type="button"
-            onClick={resetAll}
-            className="rounded-xl bg-sky-500 px-6 py-3 font-semibold text-white shadow-sm transition hover:bg-sky-600"
+        </div>
+        <div>
+          <h2 className="text-[26px] font-bold tracking-[-0.01em] text-ink">Rysunek ukończony</h2>
+          <p className="mx-auto mt-2 max-w-md text-ink-soft">
+            Wszystkie kroki ({steps.length}) za Tobą. Rysunek zapisał się w historii i liczy się do dzisiejszego celu.
+          </p>
+          {saveError && <p className="mt-2 text-sm text-danger">{saveError}</p>}
+        </div>
+        <div className="flex flex-wrap justify-center gap-2">
+          <Link
+            to="/app/progress"
+            className="flex min-h-11 items-center rounded-[10px] border border-line-strong bg-surface px-4 text-[15px] font-semibold text-ink transition hover:bg-surface-dim"
           >
+            Zobacz postęp
+          </Link>
+          <Button variant="primary" onClick={resetAll}>
             Wgraj nowe zdjęcie
-          </button>
+          </Button>
         </div>
       </section>
     )
@@ -231,15 +258,18 @@ export function ImagePracticePage() {
   const canProceed = awaitingNext && !isAnalyzingAI
   const canRetry = awaitingNext && !isAnalyzingAI && canUndo
   const isLastStep = stepIndex >= steps.length - 1
+  const floating =
+    'rounded-xl border border-line bg-surface/90 shadow-[0_8px_24px_-12px_rgba(29,28,26,0.25)] backdrop-blur-md'
 
   return (
     <section className={fullArea}>
       {/* Canvas fills entire area via absolute positioning */}
-      <div className="absolute inset-0">
+      <div className="absolute inset-0 [&>div]:rounded-none [&>div]:border-0">
         <DrawingCanvas
           userStrokes={strokes}
           brushSize={brushSize}
           tool={tool}
+          smoothing={smoothing}
           onStrokeComplete={handleStrokeComplete}
           onEraseStart={beginEraseSession}
           onEraseAtPoint={handleEraseAtPoint}
@@ -249,123 +279,83 @@ export function ImagePracticePage() {
         />
       </div>
 
-      {/* TOP-LEFT: toolbar */}
-      <div className="pointer-events-auto absolute left-4 top-4 z-10 flex items-center gap-1.5 rounded-2xl border border-slate-200/80 bg-white/85 px-3 py-2 shadow-lg backdrop-blur-md">
-        {/* Tool toggle */}
-        <button
-          type="button"
-          onClick={() => setTool('brush')}
-          className={`rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${tool === 'brush' ? 'bg-sky-500 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'}`}
-        >
-          Pędzel
-        </button>
-        <button
-          type="button"
-          onClick={() => setTool('eraser')}
-          className={`rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${tool === 'eraser' ? 'bg-rose-400 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'}`}
-        >
-          Gumka
-        </button>
-
-        <div className="mx-1 h-4 w-px bg-slate-200" />
-
-        {/* Size */}
-        <span className="text-xs text-slate-400">{tool === 'brush' ? 'Rozmiar' : 'Gumka'}</span>
-        <input
-          type="range" min={2} max={30} value={brushSize}
-          onChange={(e) => setBrushSize(Number(e.target.value))}
-          className="w-20 accent-sky-500"
-        />
-        <span className="w-5 text-center text-xs font-semibold text-slate-700">{brushSize}</span>
-
-        <div className="mx-1 h-4 w-px bg-slate-200" />
-
-        {/* Actions */}
-        <button
-          type="button"
-          onClick={handleUndo}
-          disabled={!canUndo}
-          className="rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-600 transition hover:bg-slate-100 disabled:opacity-40"
-        >
-          Cofnij
-        </button>
-        <button
-          type="button"
-          onClick={handleClear}
-          className="rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-600 transition hover:bg-slate-100"
-        >
-          Wyczyść
-        </button>
-        <button
-          type="button"
-          onClick={resetAll}
-          className="rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
-        >
-          ← Zmień zdjęcie
-        </button>
-      </div>
-
-      {/* TOP-RIGHT: step progress */}
-      <div className="pointer-events-none absolute right-4 top-4 z-10 flex items-center gap-2.5 rounded-2xl border border-slate-200/80 bg-white/85 px-3 py-2 shadow-lg backdrop-blur-md">
-        {imageUrl && (
-          <img src={imageUrl} alt="wzorzec" className="h-8 w-8 rounded-lg object-cover" />
-        )}
-        <div className="min-w-0">
-          <p className="text-xs text-slate-400">Krok {stepIndex + 1} / {steps.length}</p>
-          <p className="max-w-[160px] truncate text-sm font-semibold text-slate-800">{currentStep?.title}</p>
+      {/* TOP: toolbar + step progress */}
+      <div className="pointer-events-none absolute inset-x-4 top-4 z-10 flex flex-wrap items-start justify-between gap-2">
+        <div className={`pointer-events-auto flex flex-wrap items-center gap-x-2 gap-y-1.5 px-2.5 py-2 ${floating}`}>
+          <Segmented
+            options={TOOL_OPTIONS}
+            value={tool}
+            onChange={setTool}
+            ariaLabel="Narzędzie"
+          />
+          <Divider />
+          <label className="flex items-center gap-2">
+            <span className="text-[13px] text-ink-soft">Rozmiar</span>
+            <input
+              type="range" min={2} max={30} value={brushSize}
+              onChange={(e) => setBrushSize(Number(e.target.value))}
+              className={`w-20 ${rangeClass}`}
+            />
+            <span className="w-5 text-right text-xs tabular-nums text-ink-soft">{brushSize}</span>
+          </label>
+          <Divider />
+          <SmoothingControl value={smoothing} onChange={setSmoothing} />
+          <Divider />
+          <Button variant="ghost" size="sm" onClick={handleUndo} disabled={!canUndo}>Cofnij</Button>
+          <Button variant="danger" size="sm" onClick={handleClear}>Wyczyść</Button>
+          <Button variant="ghost" size="sm" onClick={resetAll}>Zmień zdjęcie</Button>
         </div>
-        <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-sky-100 text-xs font-bold text-sky-700">
-          {stepIndex + 1}
+
+        <div className={`pointer-events-auto flex items-center gap-3 px-2.5 py-2 ${floating}`}>
+          {imageUrl && <img src={imageUrl} alt="Zdjęcie wzorcowe" className="h-9 w-9 rounded-lg object-cover" />}
+          <div className="min-w-0">
+            <p className="font-mono text-xs uppercase tracking-[0.04em] text-ink-faint">Krok {stepIndex + 1} z {steps.length}</p>
+            <div className="mt-1 flex gap-[3px]">
+              {steps.map((step, index) => (
+                <span
+                  key={step.id}
+                  className={`h-1.5 w-4 rounded-full ${
+                    index < stepIndex ? 'bg-accent' : index === stepIndex ? 'bg-ink' : 'bg-paper-dim'
+                  }`}
+                />
+              ))}
+            </div>
+          </div>
         </div>
       </div>
 
       {/* BOTTOM: step instruction + AI feedback */}
-      <div className="pointer-events-auto absolute bottom-4 left-4 right-4 z-10 overflow-hidden rounded-2xl border border-slate-200/80 bg-white/90 shadow-xl backdrop-blur-md">
-        {/* Step instruction */}
+      <div className={`absolute inset-x-4 bottom-4 z-10 overflow-hidden ${floating}`}>
         {currentStep && (
-          <div className="border-b border-amber-100 bg-amber-50/90 px-4 py-2.5">
-            <span className="text-xs font-semibold uppercase tracking-wider text-amber-600">
-              {currentStep.title}
-            </span>
-            <p className="mt-0.5 text-sm text-amber-900">{currentStep.description}</p>
+          <div className="border-b border-line px-4 py-3">
+            <p className="text-[13px] font-medium text-accent-strong">{currentStep.title}</p>
+            <p className="mt-0.5 text-[15px] text-ink">{currentStep.description}</p>
           </div>
         )}
 
-        {/* AI feedback row */}
-        <div className="flex items-start gap-4 px-4 py-3">
+        <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center">
           <div className="min-w-0 flex-1">
-            <p className="text-xs font-medium uppercase tracking-widest text-slate-400">Analiza AI</p>
+            <p className="text-[13px] text-ink-faint">Komentarz</p>
             {isAnalyzingAI ? (
-              <div className="mt-1.5 flex items-center gap-2 text-slate-500">
-                <LoadingDots />
-                <span className="text-sm">Analizuję kreskę...</span>
+              <div className="mt-1 flex items-center gap-2 text-ink-soft">
+                <TypingDots />
+                <span className="text-sm">Analizuję rysunek…</span>
               </div>
-            ) : aiFeedback ? (
-              <p className="mt-1 text-sm leading-relaxed text-slate-800">{aiFeedback}</p>
             ) : (
-              <p className="mt-1 text-sm text-slate-400">Narysuj kreskę, aby uzyskać feedback.</p>
+              <p className={`mt-0.5 text-sm leading-relaxed ${aiFeedback ? 'text-ink' : 'text-ink-faint'}`}>
+                {aiFeedback ?? 'Narysuj ten krok, a pojawi się tu ocena.'}
+              </p>
             )}
           </div>
 
           {(canProceed || canRetry) && (
-            <div className="flex shrink-0 items-center gap-2 self-center">
-              {canRetry && (
-                <button
-                  type="button"
-                  onClick={handleRetry}
-                  className="rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-100 active:scale-95"
-                >
-                  Spróbuj jeszcze raz
-                </button>
-              )}
+            <div className="flex shrink-0 gap-2">
+              {canRetry && <Button onClick={handleRetry}>Jeszcze raz</Button>}
               {canProceed && (
-                <button
-                  type="button"
-                  onClick={handleNextStep}
-                  className="rounded-xl bg-sky-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-sky-600 active:scale-95"
-                >
-                  {isLastStep ? 'Zakończ ćwiczenie' : 'Następny krok →'}
-                </button>
+                <Button variant="primary" onClick={handleNextStep}>
+                  {isLastStep ? 'Zakończ' : 'Następny krok'}
+                  {!isLastStep && <ArrowRightIcon className="h-4 w-4" />}
+                </Button>
               )}
             </div>
           )}

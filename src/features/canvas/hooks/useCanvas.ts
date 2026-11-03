@@ -1,17 +1,20 @@
 import { useCallback, useEffect, useRef } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
-import type { Point, Stroke, Tool } from "../../../types/drawing";
+import type { Point, SmoothingSettings, Stroke, Tool } from "../../../types/drawing";
+import { createStabilizer, DEFAULT_SMOOTHING, POINT_SPACING_PX, refineStroke, type Stabilizer } from "../smoothing";
 import { renderCanvasScene } from "../utils/canvasDrawing";
-import { createPointFromPointerEvent } from "../utils/canvasPoint";
+import { createPointFromPointerEvent, getPointsFromPointerEvent } from "../utils/canvasPoint";
 
 type UseCanvasOptions = {
   userStrokes: Stroke[];
   referenceStrokes?: Stroke[];
   brushSize: number;
   tool?: Tool;
+  smoothing?: SmoothingSettings;
   userStrokeColor?: string;
   referenceStrokeColor?: string;
-  onStrokeComplete: (stroke: Stroke) => void;
+  /** rawPoints: pointer samples before stabilization/refinement — used to measure hand tremor. */
+  onStrokeComplete: (stroke: Stroke, rawPoints: Point[]) => void;
   onEraseAtPoint?: (point: Point) => void;
   onEraseStart?: () => void;
   onEraseEnd?: () => void;
@@ -28,7 +31,6 @@ type UseCanvasResult = {
 };
 
 type CanvasMetrics = { width: number; height: number; dpr: number };
-const POINT_SPACING_PX = 3;
 
 function getDistance(a: Point, b: Point): number {
   const dx = b.x - a.x;
@@ -40,7 +42,7 @@ function interpolatePoint(a: Point, b: Point, t: number): Point {
   return {
     x: a.x + (b.x - a.x) * t,
     y: a.y + (b.y - a.y) * t,
-    timestamp: Math.round(a.timestamp + (b.timestamp - a.timestamp) * t),
+    timestamp: a.timestamp + (b.timestamp - a.timestamp) * t,
   };
 }
 
@@ -55,13 +57,24 @@ function getSampledPointsBetween(a: Point, b: Point, spacing: number): Point[] {
   return sampledPoints;
 }
 
+// Appends `point`, filling the gap with evenly spaced samples so strokes keep a uniform density
+function appendPoint(points: Point[], point: Point): void {
+  const prev = points[points.length - 1];
+  if (!prev) {
+    points.push(point);
+    return;
+  }
+  for (const p of getSampledPointsBetween(prev, point, POINT_SPACING_PX)) points.push(p);
+}
+
 export function useCanvas({
   userStrokes,
   referenceStrokes = [],
   brushSize,
   tool = "brush",
-  userStrokeColor = "#1f2937",
-  referenceStrokeColor = "#cbd5e1",
+  smoothing = DEFAULT_SMOOTHING,
+  userStrokeColor = "#16181d",
+  referenceStrokeColor = "#c4cad3",
   onStrokeComplete,
   onEraseAtPoint,
   onEraseStart,
@@ -73,10 +86,12 @@ export function useCanvas({
   const containerRef = useRef<HTMLDivElement>(null);
   const metricsRef = useRef<CanvasMetrics>({ width: 0, height: 0, dpr: 1 });
   const activePointsRef = useRef<Point[]>([]);
+  const rawPointsRef = useRef<Point[]>([]);
   const activeBrushSizeRef = useRef(brushSize);
   const lastPointerPointRef = useRef<Point | null>(null);
   const isPointerActiveRef = useRef(false);
   const rafRef = useRef<number | null>(null);
+  const stabilizerRef = useRef<Stabilizer | null>(null);
 
   // Keep stable refs to props that change — avoids stale closures in callbacks
   const userStrokesRef = useRef(userStrokes);
@@ -84,12 +99,14 @@ export function useCanvas({
   const userStrokeColorRef = useRef(userStrokeColor);
   const referenceStrokeColorRef = useRef(referenceStrokeColor);
   const toolRef = useRef(tool);
+  const smoothingRef = useRef(smoothing);
 
   useEffect(() => { userStrokesRef.current = userStrokes; }, [userStrokes]);
   useEffect(() => { referenceStrokesRef.current = referenceStrokes; }, [referenceStrokes]);
   useEffect(() => { userStrokeColorRef.current = userStrokeColor; }, [userStrokeColor]);
   useEffect(() => { referenceStrokeColorRef.current = referenceStrokeColor; }, [referenceStrokeColor]);
   useEffect(() => { toolRef.current = tool; }, [tool]);
+  useEffect(() => { smoothingRef.current = smoothing; }, [smoothing]);
 
   const redrawScene = useCallback(() => {
     const canvas = canvasRef.current;
@@ -151,7 +168,7 @@ export function useCanvas({
       canvas.setPointerCapture(event.pointerId);
       isPointerActiveRef.current = true;
 
-      const point = createPointFromPointerEvent(event, canvas);
+      const point = createPointFromPointerEvent(event.nativeEvent, canvas.getBoundingClientRect());
       if (tool === "eraser") {
         onEraseStart?.();
         lastPointerPointRef.current = point;
@@ -159,8 +176,11 @@ export function useCanvas({
         return;
       }
 
+      // Settings are captured per stroke, so changing them mid-stroke has no effect
+      stabilizerRef.current = createStabilizer(smoothingRef.current);
       activeBrushSizeRef.current = brushSize;
-      activePointsRef.current = [point];
+      activePointsRef.current = [stabilizerRef.current.push(point) ?? point];
+      rawPointsRef.current = [point];
       lastPointerPointRef.current = point;
       onCurrentStrokePointCountChange?.(1);
       onActiveStrokeChange?.({ points: [{ ...point }], brushSize: activeBrushSizeRef.current });
@@ -173,22 +193,27 @@ export function useCanvas({
     (event: ReactPointerEvent<HTMLCanvasElement>) => {
       if (!isPointerActiveRef.current || !canvasRef.current) return;
 
-      const point = createPointFromPointerEvent(event, canvasRef.current);
+      const rawPoints = getPointsFromPointerEvent(event, canvasRef.current);
       if (tool === "eraser") {
-        const last = lastPointerPointRef.current;
-        const sampled = last ? getSampledPointsBetween(last, point, POINT_SPACING_PX) : [point];
-        for (const p of sampled) onEraseAtPoint?.(p);
-        lastPointerPointRef.current = point;
+        for (const point of rawPoints) {
+          const last = lastPointerPointRef.current;
+          const sampled = last ? getSampledPointsBetween(last, point, POINT_SPACING_PX) : [point];
+          for (const p of sampled) onEraseAtPoint?.(p);
+          lastPointerPointRef.current = point;
+        }
         return;
       }
 
       const points = activePointsRef.current;
-      const prev = points[points.length - 1];
-      if (prev?.x === point.x && prev.y === point.y) return;
+      const countBefore = points.length;
+      for (const point of rawPoints) {
+        lastPointerPointRef.current = point;
+        rawPointsRef.current.push(point);
+        const stabilized = stabilizerRef.current ? stabilizerRef.current.push(point) : point;
+        if (stabilized) appendPoint(points, stabilized);
+      }
+      if (points.length === countBefore) return;
 
-      const sampled = getSampledPointsBetween(prev, point, POINT_SPACING_PX);
-      for (const p of sampled) points.push(p);
-      lastPointerPointRef.current = point;
       onCurrentStrokePointCountChange?.(points.length);
       onActiveStrokeChange?.({ points: points.map((p) => ({ ...p })), brushSize: activeBrushSizeRef.current });
       scheduleRedraw();
@@ -205,14 +230,20 @@ export function useCanvas({
       isPointerActiveRef.current = false;
 
       if (tool === "brush" && activePointsRef.current.length > 0) {
+        const points = activePointsRef.current;
+        const tail = stabilizerRef.current?.finish();
+        if (tail) appendPoint(points, tail);
+
         onStrokeComplete({
-          points: activePointsRef.current.map((p) => ({ ...p })),
+          points: refineStroke(points, smoothingRef.current).map((p) => ({ ...p })),
           brushSize: activeBrushSizeRef.current,
-        });
+        }, rawPointsRef.current);
       }
+      stabilizerRef.current = null;
       if (tool === "eraser") onEraseEnd?.();
 
       activePointsRef.current = [];
+      rawPointsRef.current = [];
       lastPointerPointRef.current = null;
       onCurrentStrokePointCountChange?.(0);
       onActiveStrokeChange?.(null);
@@ -237,7 +268,12 @@ export function useCanvas({
     return () => {
       observer.disconnect();
       window.removeEventListener("resize", resizeCanvas);
-      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+      // Reset the ref too — otherwise scheduleRedraw() would think a frame is still pending
+      // and never draw again (happens on StrictMode's mount → unmount → mount)
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
     };
   }, [resizeCanvas]);
 

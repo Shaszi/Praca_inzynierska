@@ -1,102 +1,102 @@
+import type { Level, StrokeEvaluation } from '../features/practice/utils/strokeEvaluation'
+import { ArrowRightIcon } from './icons'
+import { Button, Eyebrow } from './ui'
+
 type FeedbackPanelProps = {
-  feedback: string | null
-  similarity: number | null
-  isLoading?: boolean
+  evaluation: StrokeEvaluation | null
   canProceed?: boolean
   canRetry?: boolean
   isLastStroke?: boolean
   onNextStroke?: () => void
   onRetry?: () => void
+  emptyText?: string
 }
 
-function SimilarityBar({ value }: { value: number }) {
-  const percent = Math.round(value * 100)
-  const color =
-    percent >= 75 ? 'bg-emerald-500' : percent >= 55 ? 'bg-amber-400' : 'bg-rose-500'
+const TONE: Record<Level, { text: string; bar: string; dot: string; verdict: string }> = {
+  good: { text: 'text-success', bar: 'bg-success', dot: 'bg-success', verdict: 'Bardzo dobrze' },
+  warn: { text: 'text-warn', bar: 'bg-[#b86200]', dot: 'bg-[#c77700]', verdict: 'Do poprawy' },
+  bad: { text: 'text-danger', bar: 'bg-danger', dot: 'bg-danger', verdict: 'Spróbuj jeszcze raz' },
+}
 
+const SEGMENT_NAMES = { start: 'Początek', middle: 'Środek', end: 'Koniec' } as const
+
+function ScoreBlock({ evaluation }: { evaluation: StrokeEvaluation }) {
+  const tone = TONE[evaluation.level]
   return (
-    <div className="mt-3">
-      <div className="mb-1 flex items-center justify-between text-xs text-slate-500">
-        <span>Podobieństwo geometryczne</span>
-        <span className="font-semibold text-slate-700">{percent}%</span>
+    <div className="w-full sm:w-56">
+      <div className="flex items-center gap-4">
+        <span className={`font-mono text-[44px] font-medium leading-none tracking-[-0.03em] ${tone.text}`}>
+          {evaluation.score}
+        </span>
+        <p className="text-[17px] font-bold leading-tight text-ink">{tone.verdict}</p>
       </div>
-      <div className="h-2 w-full overflow-hidden rounded-full bg-slate-200">
+      <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-paper-dim">
         <div
-          className={`h-full rounded-full transition-all duration-500 ${color}`}
-          style={{ width: `${percent}%` }}
+          className={`h-full rounded-full transition-all duration-500 ${tone.bar}`}
+          style={{ width: `${evaluation.score}%` }}
         />
       </div>
     </div>
   )
 }
 
-function LoadingDots() {
+function Details({ evaluation }: { evaluation: StrokeEvaluation }) {
   return (
-    <span className="inline-flex items-center gap-1">
-      <span className="h-2 w-2 animate-bounce rounded-full bg-sky-500 [animation-delay:0ms]" />
-      <span className="h-2 w-2 animate-bounce rounded-full bg-sky-500 [animation-delay:150ms]" />
-      <span className="h-2 w-2 animate-bounce rounded-full bg-sky-500 [animation-delay:300ms]" />
-    </span>
+    <>
+      <ul className="mt-3 flex flex-wrap gap-2">
+        {evaluation.segments.map((segment) => (
+          <li
+            key={segment.key}
+            className="inline-flex min-h-8 items-center gap-2 rounded-full border border-line bg-surface-dim px-3 text-[13px]"
+          >
+            <span className={`h-2.5 w-2.5 rounded-full ${TONE[segment.level].dot}`} aria-hidden />
+            <span className="font-semibold text-ink">{SEGMENT_NAMES[segment.key]}</span>
+            <span className="text-ink-faint">{segment.issues[0]?.label ?? 'dobrze'}</span>
+          </li>
+        ))}
+      </ul>
+      <p className="mt-2.5 font-mono text-xs text-ink-faint">
+        długość {Math.round(evaluation.lengthRatio * 100)}% · start {Math.round(evaluation.startGapPx)} px · koniec{' '}
+        {Math.round(evaluation.endGapPx)} px · tempo {Math.round(evaluation.speedPxPerSec)} px/s
+      </p>
+    </>
   )
 }
 
 export function FeedbackPanel({
-  feedback,
-  similarity,
-  isLoading = false,
+  evaluation,
   canProceed = false,
   canRetry = false,
   isLastStroke = false,
   onNextStroke,
   onRetry,
+  emptyText = 'Narysuj kreskę po wskazanej linii, a pojawi się tu ocena.',
 }: FeedbackPanelProps) {
+  const hasResult = evaluation !== null && !evaluation.tooShort
+
   return (
-    <section className="rounded-2xl border border-slate-300 bg-white p-4 shadow-sm">
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium uppercase tracking-[0.18em] text-slate-500">
-            Analiza AI
-          </p>
+    <section className="flex flex-col gap-5 rounded-2xl border border-line bg-surface p-[18px] sm:flex-row sm:items-center">
+      {hasResult && <ScoreBlock evaluation={evaluation} />}
 
-          {isLoading ? (
-            <div className="mt-2 flex items-center gap-3 text-slate-500">
-              <LoadingDots />
-              <span className="text-sm">Analizuję kreskę...</span>
-            </div>
-          ) : feedback ? (
-            <p className="mt-1 text-base leading-relaxed text-slate-800">{feedback}</p>
-          ) : (
-            <p className="mt-1 text-base text-slate-400">
-              Narysuj kreskę, aby uzyskać analizę AI.
-            </p>
-          )}
-
-          {similarity !== null && <SimilarityBar value={similarity} />}
-        </div>
-
-        {(canProceed || canRetry) && (
-          <div className="flex shrink-0 flex-col gap-2">
-            {canRetry && onRetry && (
-              <button
-                type="button"
-                onClick={onRetry}
-                className="rounded-lg border border-slate-300 bg-slate-50 px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-100 active:scale-95"
-              >
-                Spróbuj jeszcze raz
-              </button>
-            )}
-            {canProceed && onNextStroke && (
-              <button
-                type="button"
-                onClick={onNextStroke}
-                className="rounded-lg bg-sky-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-sky-600 active:scale-95"
-              >
-                {isLastStroke ? 'Zakończ ćwiczenie' : 'Następna kreska →'}
-              </button>
-            )}
-          </div>
-        )}
+      <div className="min-w-0 flex-1">
+        <Eyebrow>Ocena kreski</Eyebrow>
+        <p className={`mt-1.5 text-[15px] font-medium leading-relaxed ${evaluation ? 'text-ink' : 'text-ink-faint'}`}>
+          {evaluation?.summary ?? emptyText}
+        </p>
+        {hasResult && <Details evaluation={evaluation} />}
       </div>
+
+      {(canProceed || canRetry) && (
+        <div className="flex shrink-0 gap-2">
+          {canRetry && onRetry && <Button onClick={onRetry}>Powtórz</Button>}
+          {canProceed && onNextStroke && (
+            <Button variant="primary" onClick={onNextStroke}>
+              {isLastStroke ? 'Zakończ' : 'Dalej'}
+              {!isLastStroke && <ArrowRightIcon className="h-4 w-4" />}
+            </Button>
+          )}
+        </div>
+      )}
     </section>
   )
 }

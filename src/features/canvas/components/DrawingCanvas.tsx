@@ -1,7 +1,7 @@
 import { useCallback, useRef } from 'react'
 import type { PointerEvent as ReactPointerEvent } from 'react'
 import { useCanvas } from '../hooks/useCanvas'
-import type { GuideType, Point, Stroke, Tool } from '../../../types/drawing'
+import type { GuideType, Point, SmoothingSettings, Stroke, Tool } from '../../../types/drawing'
 import { CanvasOverlay } from './CanvasOverlay'
 import { CanvasRenderer } from './CanvasRenderer'
 
@@ -10,7 +10,8 @@ type DrawingCanvasProps = {
   referenceStrokes?: Stroke[]
   brushSize: number
   tool?: Tool
-  onStrokeComplete: (stroke: Stroke) => void
+  smoothing?: SmoothingSettings
+  onStrokeComplete: (stroke: Stroke, rawPoints: Point[]) => void
   onEraseAtPoint?: (point: Point) => void
   onEraseStart?: () => void
   onEraseEnd?: () => void
@@ -28,6 +29,7 @@ export function DrawingCanvas({
   referenceStrokes = [],
   brushSize,
   tool = 'brush',
+  smoothing,
   onStrokeComplete,
   onEraseAtPoint,
   onEraseStart,
@@ -48,6 +50,7 @@ export function DrawingCanvas({
     referenceStrokes,
     brushSize,
     tool,
+    smoothing,
     onStrokeComplete,
     onEraseAtPoint,
     onEraseStart,
@@ -97,7 +100,7 @@ export function DrawingCanvas({
   return (
     <div
       ref={containerRef}
-      className="relative h-full w-full overflow-hidden rounded-2xl border border-slate-300 bg-white shadow-inner"
+      className="relative h-full w-full overflow-hidden rounded-xl border border-line bg-surface"
     >
       {/* Background image — lowest layer */}
       {backgroundImageUrl && (
@@ -127,8 +130,8 @@ export function DrawingCanvas({
       {showCursorPreview && (
         <div
           ref={cursorRef}
-          className={`pointer-events-none absolute rounded-full border-2 ${
-            tool === 'eraser' ? 'border-rose-400 bg-rose-100/30' : 'border-sky-400/70'
+          className={`pointer-events-none absolute rounded-full border-[1.5px] ${
+            tool === 'eraser' ? 'border-danger bg-danger-soft/40' : 'border-ink/40'
           }`}
           style={{
             opacity: 0,

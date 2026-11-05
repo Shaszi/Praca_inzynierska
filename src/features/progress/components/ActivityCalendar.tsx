@@ -5,11 +5,13 @@ import { buildCalendar, type DailyActivity } from '../utils/goalProgress'
 const WEEKDAY_LABELS = ['Pn', '', 'Śr', '', 'Pt', '', '']
 const MONTHS = ['sty', 'lut', 'mar', 'kwi', 'maj', 'cze', 'lip', 'sie', 'wrz', 'paź', 'lis', 'gru']
 
+// Rampa z projektu: im więcej rysunków, tym cieplejszy kolor markera.
 function cellClass(count: number, isFuture: boolean): string {
   if (isFuture) return 'bg-transparent'
-  if (count === 0) return 'bg-paper-dim'
-  if (count === 1) return 'bg-accent/45'
-  if (count <= 3) return 'bg-accent/75'
+  if (count === 0) return 'bg-surface-dim'
+  if (count === 1) return 'bg-[#4a3a9a]'
+  if (count === 2) return 'bg-violet'
+  if (count <= 4) return 'bg-pink'
   return 'bg-accent'
 }
 
@@ -52,7 +54,7 @@ export function ActivityCalendar({ activity, today, weeks = 26 }: { activity: Da
               key={cell.day}
               title={cell.isFuture ? undefined : `${formatDay(cell.day)}: ${describe(cell.count)}`}
               className={[
-                'h-3 w-3 rounded-[3px]',
+                'h-3 w-3 rounded-[5px]',
                 cellClass(cell.count, cell.isFuture),
                 cell.isToday ? 'ring-[1.5px] ring-inset ring-ink' : '',
               ].join(' ')}
@@ -63,8 +65,8 @@ export function ActivityCalendar({ activity, today, weeks = 26 }: { activity: Da
 
       <div className="mt-3 flex items-center gap-1.5 text-[11px] text-ink-faint">
         mniej
-        {[0, 1, 2, 4].map((count) => (
-          <span key={count} className={`h-3 w-3 rounded-[3px] ${cellClass(count, false)}`} />
+        {[0, 1, 2, 4, 6].map((count) => (
+          <span key={count} className={`h-3 w-3 rounded-[5px] ${cellClass(count, false)}`} />
         ))}
         więcej
       </div>

@@ -45,11 +45,12 @@ export function ControlBar({
   minBrushSize = 1,
   maxBrushSize = 28,
   className = '',
-  chromeClassName = 'rounded-xl border border-line bg-surface px-3 py-2',
+  // Projekt nie daje paskowi własnej karty — kontrolki leżą wprost na blacie.
+  chromeClassName = '',
 }: ControlBarProps) {
   return (
     <section
-      className={`flex flex-wrap items-center gap-x-3 gap-y-2 ${chromeClassName} ${className}`}
+      className={`flex flex-wrap items-center gap-x-3.5 gap-y-2.5 ${chromeClassName} ${className}`}
     >
       {onToolChange && (
         <Segmented options={TOOL_OPTIONS} value={tool} onChange={onToolChange} ariaLabel="Narzędzie" />

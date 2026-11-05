@@ -1,9 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ControlBar } from '../components/ControlBar'
 import { Button, PageHeader } from '../components/ui'
 import { DebugPanel } from '../components/DebugPanel'
 import { FeedbackPanel } from '../components/FeedbackPanel'
+import { Modal } from '../components/Modal'
+import { BrushPanel } from '../features/canvas/components/BrushPanel'
+import { useBrushSettings } from '../features/canvas/hooks/useBrushSettings'
+import { PracticeToolbar } from '../features/practice/components/PracticeToolbar'
+import { coverageWords } from '../features/practice/utils/coverageWords'
 import { useSmoothingSettings } from '../features/canvas/hooks/useSmoothingSettings'
 import { PracticeCanvas } from '../features/practice/components/PracticeCanvas'
 import { usePracticeAnalysis } from '../features/practice/hooks/usePracticeAnalysis'
@@ -11,35 +15,65 @@ import type { LiveProgress } from '../features/practice/utils/strokeEvaluation'
 import { useReferenceGuide } from '../features/practice/hooks/useReferenceGuide'
 import { usePracticeSession } from '../features/progress/hooks/usePracticeSession'
 import { ReferenceSelector } from '../features/teacher/components/ReferenceSelector'
-import { useStrokes } from '../hooks/useStrokes'
+import { LayerPanel } from '../features/canvas/components/LayerPanel'
+import { PRACTICE_LAYER_ID, useLayers } from '../features/canvas/hooks/useLayers'
 import type { Point, ReferenceDrawing, Stroke, Tool } from '../types/drawing'
 import { eraseAtPoint } from '../utils/eraser'
 
 export function PracticePage() {
   const {
-    strokes,
-    strokeCount,
-    currentStrokePointCount,
-    lastStrokeDurationMs,
-    setCurrentStrokePointCount,
+    layers,
+    activeLayer,
+    activeLayerId,
+    setActiveLayerId,
+    flatStrokes,
     addStroke,
-    undoStroke,
-    redoStroke,
-    clearStrokes,
+    addLayer,
+    removeLayer,
+    moveLayer,
+    updateLayer,
     beginEraseSession,
     eraseInSession,
     endEraseSession,
+    clear: clearLayers,
+    undo: undoStroke,
+    redo: redoStroke,
     canUndo,
     canRedo,
-  } = useStrokes()
+  } = useLayers()
 
-  const [brushSize, setBrushSize] = useState(5)
+  const [currentStrokePointCount, setCurrentStrokePointCount] = useState(0)
+  const [isLayersOpen, setIsLayersOpen] = useState(false)
+  const [isFullscreen, setIsFullscreen] = useState(false)
+  const [lockedWarning, setLockedWarning] = useState<string | null>(null)
+  // Krótkie okno po puszczeniu kreski, w którym wynik się odsłania. Ocena jest już
+  // policzona — to animacja, nie oczekiwanie na cokolwiek.
+  const [isAnalysing, setIsAnalysing] = useState(false)
+  const [guideOpacity, setGuideOpacity] = useState(1)
+
   const [tool, setTool] = useState<Tool>('brush')
-  const { smoothing, setSmoothing } = useSmoothingSettings()
+  const { smoothing } = useSmoothingSettings()
+
+  useEffect(() => {
+    if (!isFullscreen) return
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setIsFullscreen(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [isFullscreen])
+
+  useEffect(() => {
+    if (!isAnalysing) return
+    const timer = window.setTimeout(() => setIsAnalysing(false), 620)
+    return () => window.clearTimeout(timer)
+  }, [isAnalysing])
 
   // Stroke-by-stroke guide state
   const [currentGuideStrokeIndex, setCurrentGuideStrokeIndex] = useState(0)
   const [awaitingNext, setAwaitingNext] = useState(false)
+  const [isBrushOpen, setIsBrushOpen] = useState(false)
+  const { brush, setBrush } = useBrushSettings()
   const [isCompleted, setIsCompleted] = useState(false)
 
   const {
@@ -64,7 +98,7 @@ export function PracticePage() {
   // Show only the current guide stroke as overlay
   const guideStrokesForCanvas = currentReferenceStroke ? [currentReferenceStroke] : []
 
-  const { evaluation, live, activeStrokeColor, analyzeActiveStroke, evaluateCompletedStroke, resetAnalysis } =
+  const { evaluation, live, analyzeActiveStroke, evaluateCompletedStroke, resetAnalysis } =
     usePracticeAnalysis(currentReferenceStroke)
 
   const sessionParams = useMemo(
@@ -78,14 +112,30 @@ export function PracticePage() {
 
   const handleEraseAtPoint = useCallback(
     (point: Point) => {
-      eraseInSession((prev) => eraseAtPoint(prev, point.x, point.y, brushSize))
+      if (activeLayer?.locked) {
+        setLockedWarning(activeLayer.name)
+        return
+      }
+      eraseInSession((prev) => eraseAtPoint(prev, point.x, point.y, brush.width))
     },
-    [brushSize, eraseInSession],
+    [activeLayer, brush.width, eraseInSession],
   )
 
   // Ocena jest liczona lokalnie i od razu — bez czekania na serwer.
   const handleStrokeComplete = useCallback(
     (stroke: Stroke, rawPoints: Point[]) => {
+      if (activeLayer?.locked) {
+        setLockedWarning(activeLayer.name)
+        return
+      }
+
+      // Reguła z projektu: punkty liczą się tylko z warstwy „Ćwiczenie".
+      // Na szkicu można bazgrać do woli i nie psuć sobie wyniku.
+      if (activeLayer && activeLayer.id !== PRACTICE_LAYER_ID) {
+        addStroke(stroke)
+        return
+      }
+
       const result = evaluateCompletedStroke(stroke, rawPoints)
       // Kliknięcie lub urwany ruch nie zostaje na płótnie i nie liczy się jako próba.
       if (result?.tooShort) return
@@ -93,6 +143,7 @@ export function PracticePage() {
       if (!result) return
 
       setAwaitingNext(true)
+      setIsAnalysing(true)
       recordAttempt({
         stepIndex: currentGuideStrokeIndex,
         stroke,
@@ -117,20 +168,20 @@ export function PracticePage() {
         },
       })
     },
-    [addStroke, evaluateCompletedStroke, currentGuideStrokeIndex, recordAttempt],
+    [activeLayer, addStroke, evaluateCompletedStroke, currentGuideStrokeIndex, recordAttempt],
   )
 
   const handleNextStroke = useCallback(() => {
     if (currentGuideStrokeIndex >= totalStrokes - 1) {
       setIsCompleted(true)
       setAwaitingNext(false)
-      completeSession(strokes)
+      completeSession(flatStrokes)
       return
     }
     setCurrentGuideStrokeIndex((i) => i + 1)
     setAwaitingNext(false)
     resetAnalysis()
-  }, [currentGuideStrokeIndex, totalStrokes, resetAnalysis, completeSession, strokes])
+  }, [currentGuideStrokeIndex, totalStrokes, resetAnalysis, completeSession, flatStrokes])
 
   const handleRetryStroke = useCallback(() => {
     undoStroke()
@@ -145,13 +196,13 @@ export function PracticePage() {
   }, [undoStroke, resetAnalysis])
 
   const handleClear = useCallback(() => {
-    clearStrokes()
+    clearLayers()
     setAwaitingNext(false)
     setCurrentGuideStrokeIndex(0)
     setIsCompleted(false)
     resetAnalysis()
     resetSession()
-  }, [clearStrokes, resetAnalysis, resetSession])
+  }, [clearLayers, resetAnalysis, resetSession])
 
   const handleRedo = useCallback(() => {
     redoStroke()
@@ -204,75 +255,138 @@ export function PracticePage() {
       </PageHeader>
 
       {errorMessage || saveError ? (
-        <p className="rounded-xl bg-danger-soft px-3.5 py-3 text-sm font-medium text-danger">{errorMessage ?? saveError}</p>
+        <p className="rounded-[16px] bg-danger-soft px-3.5 py-3 text-sm font-medium text-danger">{errorMessage ?? saveError}</p>
       ) : null}
 
       {!isLoadingReferences && !hasReferences ? (
-        <div className="flex flex-1 flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-line-strong px-6 py-16 text-center">
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 rounded-[18px] border border-dashed border-line-strong px-6 py-16 text-center">
           <p className="text-[20px] font-bold text-ink">Nie masz jeszcze wzorców</p>
           <p className="max-w-sm text-ink-soft">
             Narysuj kilka linii w edytorze i zapisz je jako wzorzec — potem wrócisz tu je odrysować.
           </p>
           <Link
             to="/app/references"
-            className="mt-2 inline-flex min-h-11 items-center rounded-[10px] bg-accent px-4 text-[15px] font-semibold text-on-accent transition hover:bg-accent-strong"
+            className="mt-2 inline-flex min-h-11 items-center rounded-full bg-accent px-4 text-[15px] font-semibold text-on-accent transition hover:bg-accent-strong"
           >
             Otwórz edytor wzorców
           </Link>
         </div>
       ) : (
         <>
-          <ControlBar
-            brushSize={brushSize}
-            onBrushSizeChange={setBrushSize}
-            tool={tool}
-            onToolChange={setTool}
-            smoothing={smoothing}
-            onSmoothingChange={setSmoothing}
-            onUndo={handleUndo}
-            onRedo={handleRedo}
-            onClear={handleClear}
-            canUndo={canUndo}
-            canRedo={canRedo}
-            extraControls={
-              totalStrokes > 0 ? (
-                <StepProgress current={isCompleted ? totalStrokes : currentGuideStrokeIndex} total={totalStrokes} />
-              ) : null
+          {/* Układ z projektu: kanwa bierze resztę, ocena siedzi w szynie 340 px i nie zasłania rysunku. */}
+          <div
+            className={
+              isFullscreen
+                ? 'fixed inset-0 z-[60] grid gap-[18px] bg-paper-dim p-4 lg:grid-cols-[minmax(0,1fr)_360px]'
+                : 'grid min-h-0 flex-1 gap-[18px] lg:grid-cols-[minmax(0,1fr)_340px]'
             }
-          />
+          >
+            <div className="flex min-h-0 min-w-0 flex-col gap-3.5">
+              <div className="relative">
+                <PracticeToolbar
+                  tool={tool}
+                  onToolChange={setTool}
+                  title={selectedReference?.name ?? ''}
+                  stepIndex={isCompleted ? totalStrokes : currentGuideStrokeIndex}
+                  stepsTotal={totalStrokes}
+                  isLayersOpen={isLayersOpen}
+                  onToggleLayers={() => {
+                    setIsLayersOpen((open) => !open)
+                    setIsBrushOpen(false)
+                  }}
+                  onOpenBrush={() => setIsBrushOpen((open) => !open)}
+                  isBrushOpen={isBrushOpen}
+                  onUndo={handleUndo}
+                  onRedo={handleRedo}
+                  onClear={handleClear}
+                  canUndo={canUndo}
+                  canRedo={canRedo}
+                  isFullscreen={isFullscreen}
+                  onToggleFullscreen={() => setIsFullscreen((open) => !open)}
+                />
+                {isBrushOpen && (
+                  <div className="absolute top-full right-0 z-20 mt-2">
+                    <BrushPanel brush={brush} onChange={setBrush} canvasBackground="#0d0b20" />
+                  </div>
+                )}
+              </div>
 
-          {currentReferenceStroke ? (
-            <StrokeMeter
-              live={live}
-              finalCoverage={awaitingNext && evaluation && !evaluation.tooShort ? evaluation.lengthRatio * 100 : null}
-            />
-          ) : null}
+              {currentReferenceStroke ? (
+                <StrokeMeter
+                  live={live}
+                  finalCoverage={awaitingNext && evaluation && !evaluation.tooShort ? evaluation.lengthRatio * 100 : null}
+                />
+              ) : null}
 
-          <div className="relative min-h-[420px] flex-1">
-            <PracticeCanvas
-              userStrokes={strokes}
-              referenceStrokes={guideStrokesForCanvas}
-              brushSize={brushSize}
-              tool={tool}
-              smoothing={smoothing}
-              userStrokeColor={activeStrokeColor}
-              onStrokeComplete={handleStrokeComplete}
-              onCurrentStrokePointCountChange={setCurrentStrokePointCount}
-              onActiveStrokeChange={analyzeActiveStroke}
-              onEraseStart={beginEraseSession}
-              onEraseAtPoint={handleEraseAtPoint}
-              onEraseEnd={endEraseSession}
-              errorMarker={awaitingNext ? evaluation?.worstPoint : null}
-            />
-            {!selectedReference && hasReferences ? (
-              <p className="pointer-events-none absolute inset-x-0 top-1/2 -translate-y-1/2 text-center text-ink-faint">
-                Wybierz wzorzec u góry, żeby zacząć.
-              </p>
-            ) : null}
+              <div className="relative flex min-h-[420px] flex-1 gap-3.5">
+                {/* Panel warstw dokowany z lewej, jak `.fs-layers` w projekcie. */}
+                {isLayersOpen && (
+                  <aside
+                    className="w-[290px] max-w-[88%] shrink-0 overflow-auto rounded-[18px] border border-line bg-surface p-3.5"
+                    aria-label="Warstwy"
+                  >
+                    <LayerPanel
+                      layers={layers}
+                      activeLayerId={activeLayerId}
+                      guideOpacity={guideOpacity}
+                      onGuideOpacity={setGuideOpacity}
+                      guideStrokes={allReferenceStrokes}
+                      onSelect={setActiveLayerId}
+                      onToggleVisible={(id) =>
+                        updateLayer(id, (layer) => ({ ...layer, visible: !layer.visible }))
+                      }
+                      onToggleLock={(id) => updateLayer(id, (layer) => ({ ...layer, locked: !layer.locked }))}
+                      onOpacity={(id, value) => updateLayer(id, (layer) => ({ ...layer, opacity: value }))}
+                      onMove={moveLayer}
+                      onRemove={removeLayer}
+                      onAdd={addLayer}
+                    />
+                  </aside>
+                )}
+
+                <div className="relative min-w-0 flex-1">
+                <PracticeCanvas
+                  layers={layers}
+                  activeLayerId={activeLayerId}
+                  referenceStrokes={guideStrokesForCanvas}
+                  brushSize={brush.width}
+                  brushOpacity={brush.opacity}
+                  tool={tool}
+                  smoothing={smoothing}
+                  userStrokeColor={brush.color}
+                  onStrokeComplete={handleStrokeComplete}
+                  onCurrentStrokePointCountChange={setCurrentStrokePointCount}
+                  onActiveStrokeChange={analyzeActiveStroke}
+                  onEraseStart={beginEraseSession}
+                  onEraseAtPoint={handleEraseAtPoint}
+                  onEraseEnd={endEraseSession}
+                  errorMarker={awaitingNext ? evaluation?.worstPoint : null}
+                />
+                {!selectedReference && hasReferences ? (
+                  <p className="pointer-events-none absolute inset-x-0 top-1/2 -translate-y-1/2 text-center text-ink-faint">
+                    Wybierz wzorzec u góry, żeby zacząć.
+                  </p>
+                ) : null}
+                </div>
+              </div>
+            </div>
+
+            <aside className="flex min-w-0 flex-col gap-3.5">
+              <FeedbackPanel
+                evaluation={evaluation}
+                live={live}
+                isAnalysing={isAnalysing}
+                canProceed={awaitingNext}
+                canRetry={awaitingNext && canUndo}
+                isLastStroke={currentGuideStrokeIndex >= totalStrokes - 1}
+                onNextStroke={handleNextStroke}
+                onRetry={handleRetryStroke}
+              />
+            </aside>
           </div>
 
-          {isCompleted ? (
-            <section className="flex flex-col gap-3 rounded-xl border border-success/30 bg-success-soft px-4 py-3.5 sm:flex-row sm:items-center">
+          {isCompleted && (
+            <section className="flex flex-col gap-3 rounded-[18px] border border-success/30 bg-success-soft px-4 py-3.5 sm:flex-row sm:items-center">
               <div className="flex-1">
                 <p className="font-medium text-success">Wzorzec ukończony</p>
                 <p className="text-sm text-ink-soft">Rysunek zapisał się w historii i liczy się do dzisiejszego celu.</p>
@@ -280,7 +394,7 @@ export function PracticePage() {
               <div className="flex gap-2">
                 <Link
                   to="/app/progress"
-                  className="flex min-h-11 items-center rounded-[10px] border border-line-strong bg-surface px-4 text-[15px] font-semibold text-ink transition hover:bg-surface-dim"
+                  className="flex min-h-11 items-center rounded-full border border-ink-faint bg-surface px-4 text-[15px] font-semibold text-ink transition hover:bg-surface-dim"
                 >
                   Zobacz postęp
                 </Link>
@@ -289,21 +403,19 @@ export function PracticePage() {
                 </Button>
               </div>
             </section>
-          ) : (
-            <FeedbackPanel
-              evaluation={evaluation}
-              canProceed={awaitingNext}
-              canRetry={awaitingNext && canUndo}
-              isLastStroke={currentGuideStrokeIndex >= totalStrokes - 1}
-              onNextStroke={handleNextStroke}
-              onRetry={handleRetryStroke}
-            />
+          )}
+
+          {lockedWarning && (
+            <Modal title="Warstwa jest zablokowana" onClose={() => setLockedWarning(null)}>
+              Warstwa „{lockedWarning}" jest zablokowana, więc nie da się na niej rysować ani
+              wymazywać. Zdejmij kłódkę w panelu warstw albo wybierz inną warstwę.
+            </Modal>
           )}
 
           <DebugPanel
-            strokeCount={strokeCount}
+            strokeCount={flatStrokes.length}
             currentStrokePointCount={currentStrokePointCount}
-            lastStrokeDurationMs={lastStrokeDurationMs}
+            lastStrokeDurationMs={null}
           />
         </>
       )}
@@ -325,50 +437,24 @@ function StrokeMeter({ live, finalCoverage }: { live: LiveProgress | null; final
 
   return (
     <div className="flex items-center gap-3">
-      <span className="font-mono text-xs uppercase tracking-[0.04em] text-ink-faint">Pokrycie kroku</span>
+      <span className="min-w-[96px] text-[13px] text-ink-faint">Narysowane</span>
       <div
-        className="h-1.5 flex-1 overflow-hidden rounded-full bg-paper-dim"
+        className="h-2.5 flex-1 overflow-hidden rounded-full border border-line bg-paper-dim"
         role="progressbar"
         aria-label="Pokrycie aktualnego kroku"
         aria-valuenow={rounded}
         aria-valuemin={0}
         aria-valuemax={100}
+        aria-valuetext={coverageWords(rounded)}
       >
         <div
           className={`h-full rounded-full transition-[width] duration-100 ease-out ${bar}`}
           style={{ width: `${coverage}%` }}
         />
       </div>
-      <span className="font-mono text-xs tabular-nums text-ink">{rounded}%</span>
-      {live ? (
-        <span className="font-mono text-xs text-ink-faint" title="Margines błędu: do tyle od wzoru kreska jeszcze się liczy">
-          ±{Math.round(live.tolerancePx)} px
-        </span>
-      ) : null}
+      {/* Projekt pokazuje tu słowa, nie procent — w trakcie ruchu liczba nic nie podpowiada. */}
+      <span className="min-w-10 text-right text-sm font-bold whitespace-nowrap">{coverageWords(rounded)}</span>
     </div>
   )
 }
 
-function StepProgress({ current, total }: { current: number; total: number }) {
-  const done = Math.min(current, total)
-  return (
-    <div className="flex items-center gap-2.5" aria-label={`Kreska ${Math.min(done + 1, total)} z ${total}`}>
-      <span className="font-mono text-xs uppercase tracking-[0.04em] text-ink-faint">
-        {done >= total ? `${total} z ${total}` : `Kreska ${done + 1} z ${total}`}
-      </span>
-      {total <= 24 && (
-        <span className="flex gap-[3px]">
-          {Array.from({ length: total }, (_, index) => (
-            <span
-              key={index}
-              className={[
-                'h-1.5 w-3 rounded-full transition-colors',
-                index < done ? 'bg-accent' : index === done ? 'bg-ink' : 'bg-paper-dim',
-              ].join(' ')}
-            />
-          ))}
-        </span>
-      )}
-    </div>
-  )
-}

@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { ControlBar } from '../components/ControlBar'
 import { DebugPanel } from '../components/DebugPanel'
-import { Button, PageHeader } from '../components/ui'
+import { Button, Eyebrow, PageHeader } from '../components/ui'
 import { DrawingCanvas } from '../features/canvas/components/DrawingCanvas'
 import { useSmoothingSettings } from '../features/canvas/hooks/useSmoothingSettings'
 import { ImportControl } from '../features/teacher/components/ImportExportControls'
 import { ReferenceLibrary } from '../features/teacher/components/ReferenceLibrary'
 import { useReferences } from '../features/teacher/hooks/useReferences'
+import { useSingleLayer } from '../features/canvas/hooks/useLayers'
 import { useStrokes } from '../hooks/useStrokes'
 import type { Point, Tool } from '../types/drawing'
 import { eraseAtPoint } from '../utils/eraser'
@@ -35,6 +36,7 @@ export function TeacherPage() {
     canUndo,
     canRedo,
   } = useStrokes()
+  const canvasLayers = useSingleLayer(strokes)
 
   const {
     references,
@@ -146,7 +148,7 @@ export function TeacherPage() {
 
           <div className="min-h-[420px] flex-1">
             <DrawingCanvas
-              userStrokes={strokes}
+              layers={canvasLayers}
               brushSize={brushSize}
               tool={tool}
               smoothing={smoothing}
@@ -163,14 +165,14 @@ export function TeacherPage() {
             <>
               <form
                 onSubmit={handleSave}
-                className="flex flex-col gap-2 rounded-xl border border-line bg-surface p-2 sm:flex-row sm:items-center"
+                className="flex flex-col gap-2 rounded-[18px] border border-line bg-surface p-2 sm:flex-row sm:items-center"
               >
                 <input
                   value={referenceName}
                   onChange={(event) => setReferenceName(event.target.value)}
                   placeholder={`Nazwa wzorca, np. „Wzorzec ${references.length + 1}”`}
                   maxLength={120}
-                  className="min-w-0 flex-1 min-h-11 rounded-[10px] bg-transparent px-3 text-[15px] text-ink placeholder:text-ink-faint focus:bg-surface-dim focus:outline-none"
+                  className="min-w-0 flex-1 min-h-11 rounded-full bg-transparent px-3 text-[15px] text-ink placeholder:text-ink-faint focus:bg-surface-dim focus:outline-none"
                   aria-label="Nazwa wzorca"
                 />
                 <Button type="submit" variant="primary" disabled={isSaving || strokes.length === 0}>
@@ -192,10 +194,10 @@ export function TeacherPage() {
         </div>
 
         <aside className="flex min-h-0 flex-col gap-3">
-          <h2 className="flex items-baseline justify-between text-xs font-semibold uppercase tracking-[0.08em] text-ink-faint">
+          <Eyebrow as="h2" className="flex items-baseline justify-between">
             Zapisane
             <span className="font-mono">{references.length}</span>
-          </h2>
+          </Eyebrow>
           <div className="min-h-0 overflow-y-auto lg:max-h-[calc(100vh-220px)]">
             <ReferenceLibrary
               references={references}

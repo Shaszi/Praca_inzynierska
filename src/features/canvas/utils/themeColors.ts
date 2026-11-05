@@ -1,5 +1,4 @@
 import { useMemo } from 'react'
-import { useTheme } from '../../theme/theme'
 
 /**
  * Kontekst 2D nie przyjmuje klas Tailwinda ani zmiennych CSS — potrzebuje konkretnego
@@ -19,23 +18,21 @@ export type CanvasColors = {
   success: string
   warn: string
   danger: string
+  violet: string
 }
 
-/** Przeliczane przy każdej zmianie motywu, bo wtedy te same tokeny mają inne wartości. */
+/** Projekt jest jednomotywowy, więc tokeny czytamy raz — nie ma zmiany, która by to unieważniła. */
 export function useCanvasColors(): CanvasColors {
-  const theme = useTheme()
-
   return useMemo(
     () => ({
-      ink: readCssColor('--color-ink', '#16132a'),
-      lineStrong: readCssColor('--color-line-strong', '#c6c1e3'),
-      accent: readCssColor('--color-accent', '#5a2ee0'),
-      success: readCssColor('--color-success', '#0d7a56'),
-      warn: readCssColor('--color-warn', '#a04700'),
-      danger: readCssColor('--color-danger', '#c4123f'),
+      ink: readCssColor('--color-ink', '#f5f3ff'),
+      lineStrong: readCssColor('--color-line-strong', '#4b4590'),
+      accent: readCssColor('--color-accent', '#ffd84a'),
+      success: readCssColor('--color-success', '#3ee6a8'),
+      warn: readCssColor('--color-warn', '#ffa53d'),
+      danger: readCssColor('--color-danger', '#ff6b85'),
+      violet: readCssColor('--color-violet', '#9d7dff'),
     }),
-    // theme jest tu właściwą zależnością: zmiana motywu zmienia wartości tokenów.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [theme],
+    [],
   )
 }

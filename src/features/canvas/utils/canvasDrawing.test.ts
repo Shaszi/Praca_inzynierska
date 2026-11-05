@@ -18,14 +18,18 @@ function fakeContext() {
     lineJoin: '',
     setTransform: () => {},
     setLineDash: () => {},
-    clearRect: () => ops.push('clear'),
+    clearRect: (): void => {
+      ops.push('clear')
+    },
     beginPath: () => {},
     moveTo: () => {},
     lineTo: () => {},
     quadraticCurveTo: () => {},
     arc: () => {},
-    stroke: () => ops.push('draw'),
-    fill: () => {
+    stroke: (): void => {
+      ops.push('draw')
+    },
+    fill: (): void => {
       // Kreska jednopunktowa też używa fill(), więc rozstrzyga tryb mieszania.
       ops.push(context.globalCompositeOperation === 'destination-out' ? 'erase' : 'draw')
     },
@@ -98,5 +102,64 @@ describe('replayLayer', () => {
     expect(ops).toEqual(['clear', 'draw', 'erase'])
     expect(context.globalCompositeOperation).toBe('source-over')
     expect(context.globalAlpha).toBe(1)
+  })
+})
+
+describe('kolor per kreska', () => {
+  function colourTracking() {
+    const { context, ops } = fakeContext()
+    const colors: string[] = []
+    const alphas: number[] = []
+    const original = context.stroke
+    context.stroke = () => {
+      colors.push(context.strokeStyle)
+      alphas.push(context.globalAlpha)
+      return original()
+    }
+    return { context, ops, colors, alphas }
+  }
+
+  // To jest cała istota zmiany: zmiana pędzla nie może przemalować tego,
+  // co już narysowane. Każda kreska niesie własny kolor.
+  it('każda kreska rysuje się swoim kolorem, nie kolorem płótna', () => {
+    const { context, colors } = colourTracking()
+    replayLayer(
+      context as unknown as CanvasRenderingContext2D,
+      layerOf(
+        [
+          { brushSize: 4, color: '#ff5fa8', points: [point(0, 0), point(10, 0)] },
+          { brushSize: 4, color: '#4fd2ff', points: [point(20, 0), point(30, 0)] },
+        ],
+        [],
+      ),
+      { ...options, color: '#3ee6a8' },
+    )
+    expect(colors).toEqual(['#ff5fa8', '#4fd2ff'])
+  })
+
+  it('kreska bez koloru bierze kolor płótna — stare zapisy i wzorce', () => {
+    const { context, colors } = colourTracking()
+    replayLayer(
+      context as unknown as CanvasRenderingContext2D,
+      layerOf([{ brushSize: 4, points: [point(0, 0), point(10, 0)] }], []),
+      { ...options, color: '#3ee6a8' },
+    )
+    expect(colors).toEqual(['#3ee6a8'])
+  })
+
+  it('krycie też jest per kreska', () => {
+    const { context, alphas } = colourTracking()
+    replayLayer(
+      context as unknown as CanvasRenderingContext2D,
+      layerOf(
+        [
+          { brushSize: 4, color: '#ff5fa8', opacity: 0.4, points: [point(0, 0), point(10, 0)] },
+          { brushSize: 4, color: '#ff5fa8', points: [point(20, 0), point(30, 0)] },
+        ],
+        [],
+      ),
+      options,
+    )
+    expect(alphas).toEqual([0.4, 1])
   })
 })

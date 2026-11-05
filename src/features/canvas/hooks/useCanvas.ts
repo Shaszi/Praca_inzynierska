@@ -6,9 +6,11 @@ import { renderCanvasScene, replayLayer } from "../utils/canvasDrawing";
 import { createPointFromPointerEvent, getPointsFromPointerEvent, IDENTITY_VIEW, type CanvasView } from "../utils/canvasPoint";
 
 type UseCanvasOptions = {
-  userStrokes: Stroke[];
+  layers: Layer[];
   referenceStrokes?: Stroke[];
   brushSize: number;
+  /** Krycie pędzla 0–1, zapisywane na kresce. */
+  brushOpacity?: number;
   tool?: Tool;
   smoothing?: SmoothingSettings;
   userStrokeColor?: string;
@@ -34,8 +36,6 @@ type UseCanvasResult = {
 
 type CanvasMetrics = { width: number; height: number; dpr: number };
 
-// Etap 1: jedna niejawna warstwa, zero UI. Panel warstw wchodzi w Etapie 2.
-const BASE_LAYER_ID = "base";
 
 const MIN_SCALE = 0.5;
 const MAX_SCALE = 6;
@@ -71,6 +71,22 @@ function getSampledPointsBetween(a: Point, b: Point, spacing: number): Point[] {
   return sampledPoints;
 }
 
+/**
+ * Dociąga rysowaną kreskę do prawdziwej pozycji wskaźnika.
+ *
+ * Stabilizator z definicji zostaje za kursorem (filtr One Euro wygładza, tryb „rope"
+ * trzyma punkt w promieniu), a na puszczeniu dokleja zaległy punkt — stąd wrażenie,
+ * że linia wlecze się za myszką i na końcu przeskakuje. Do RYSOWANIA pokazujemy
+ * czubek w miejscu kursora; zapisywane punkty zostają filtrowane, więc ocena kreski
+ * nic nie traci.
+ */
+export function withLiveTip(points: Point[], raw: Point | null): Point[] {
+  if (!raw || points.length === 0) return points
+  const last = points[points.length - 1]
+  if (getDistance(last, raw) < 0.5) return points
+  return [...points, raw]
+}
+
 // Appends `point`, filling the gap with evenly spaced samples so strokes keep a uniform density
 function appendPoint(points: Point[], point: Point): void {
   const prev = points[points.length - 1];
@@ -82,9 +98,10 @@ function appendPoint(points: Point[], point: Point): void {
 }
 
 export function useCanvas({
-  userStrokes,
+  layers,
   referenceStrokes = [],
   brushSize,
+  brushOpacity = 1,
   tool = "brush",
   smoothing = DEFAULT_SMOOTHING,
   // Hexy literalne, bo context 2D nie przyjmie klas — odpowiadają --color-ink i --color-line-strong.
@@ -104,6 +121,10 @@ export function useCanvas({
   const activePointsRef = useRef<Point[]>([]);
   const rawPointsRef = useRef<Point[]>([]);
   const activeBrushSizeRef = useRef(brushSize);
+  // Kolor i krycie zamrażane na starcie kreski, tak jak grubość — zmiana pędzla
+  // w trakcie nie może przemalować tego, co już narysowane.
+  const activeColorRef = useRef(userStrokeColor);
+  const activeOpacityRef = useRef(brushOpacity);
   const lastPointerPointRef = useRef<Point | null>(null);
   const isPointerActiveRef = useRef(false);
   const rafRef = useRef<number | null>(null);
@@ -112,18 +133,21 @@ export function useCanvas({
   const layerCanvasesRef = useRef<Map<string, HTMLCanvasElement>>(new Map());
   const layersDirtyRef = useRef(true);
   const viewRef = useRef<CanvasView>(IDENTITY_VIEW);
+  // Przesuwanie płótna: środkowy przycisk albo prawy. Zapamiętujemy widok z chwili
+  // startu, żeby liczyć przesunięcie od niego, a nie kumulować błędu z klatek.
+  const panRef = useRef<{ pointerId: number; startX: number; startY: number; origin: CanvasView } | null>(null);
   const guidePhaseRef = useRef(0);
   const guideRafRef = useRef<number | null>(null);
 
   // Keep stable refs to props that change — avoids stale closures in callbacks
-  const userStrokesRef = useRef(userStrokes);
+  const layersRef = useRef(layers);
   const referenceStrokesRef = useRef(referenceStrokes);
   const userStrokeColorRef = useRef(userStrokeColor);
   const referenceStrokeColorRef = useRef(referenceStrokeColor);
   const toolRef = useRef(tool);
   const smoothingRef = useRef(smoothing);
 
-  useEffect(() => { userStrokesRef.current = userStrokes; layersDirtyRef.current = true; }, [userStrokes]);
+  useEffect(() => { layersRef.current = layers; layersDirtyRef.current = true; }, [layers]);
   useEffect(() => { referenceStrokesRef.current = referenceStrokes; }, [referenceStrokes]);
   // Kolor jest wypalany w bitmapę warstwy, więc jego zmiana wymaga odtworzenia.
   // W trybie wzorca kolor zmienia się z dokładnością kreski, ale tylko na progach, nie co klatkę.
@@ -132,19 +156,7 @@ export function useCanvas({
   useEffect(() => { toolRef.current = tool; }, [tool]);
   useEffect(() => { smoothingRef.current = smoothing; }, [smoothing]);
 
-  const getLayers = useCallback(
-    (): Layer[] => [
-      {
-        id: BASE_LAYER_ID,
-        name: "Rysunek",
-        visible: true,
-        opacity: 1,
-        strokes: userStrokesRef.current,
-        erases: [],
-      },
-    ],
-    [],
-  );
+  const getLayers = useCallback((): Layer[] => layersRef.current, []);
 
   // shortcut: pełne odtworzenie warstwy przy każdej zmianie kresek, zamiast dorysowania
   // tylko nowej. Jest to raz na kreskę, nie raz na klatkę jak dotąd. Podnieść, gdy
@@ -193,7 +205,12 @@ export function useCanvas({
 
     const activeStroke =
       toolRef.current === "brush" && activePointsRef.current.length > 0
-        ? { points: activePointsRef.current, brushSize: activeBrushSizeRef.current }
+        ? {
+            points: withLiveTip(activePointsRef.current, lastPointerPointRef.current),
+            brushSize: activeBrushSizeRef.current,
+            color: activeColorRef.current,
+            opacity: activeOpacityRef.current,
+          }
         : null;
 
     const layers = getLayers();
@@ -274,8 +291,20 @@ export function useCanvas({
       zoomAt(event.clientX - bounds.left, event.clientY - bounds.top, Math.exp(-delta * 0.0015));
     };
 
+    // Windows otwiera autoprzewijanie na środkowym przycisku — blokujemy je,
+    // inaczej przesuwanie płótna walczy z przewijaniem strony.
+    const blockAux = (event: MouseEvent) => {
+      if (event.button === 1 || event.button === 2) event.preventDefault();
+    };
+
     canvas.addEventListener("wheel", onWheel, { passive: false });
-    return () => canvas.removeEventListener("wheel", onWheel);
+    canvas.addEventListener("mousedown", blockAux);
+    canvas.addEventListener("auxclick", blockAux);
+    return () => {
+      canvas.removeEventListener("wheel", onWheel);
+      canvas.removeEventListener("mousedown", blockAux);
+      canvas.removeEventListener("auxclick", blockAux);
+    };
   }, [zoomAt]);
 
   const resizeCanvas = useCallback(() => {
@@ -303,6 +332,20 @@ export function useCanvas({
       if (!canvas) return;
 
       event.preventDefault();
+
+      // Środkowy (1) i prawy (2) przycisk przesuwają płótno, nie rysują.
+      if (event.button === 1 || event.button === 2) {
+        canvas.setPointerCapture(event.pointerId);
+        panRef.current = {
+          pointerId: event.pointerId,
+          startX: event.clientX,
+          startY: event.clientY,
+          origin: viewRef.current,
+        };
+        canvas.style.cursor = "grabbing";
+        return;
+      }
+
       canvas.setPointerCapture(event.pointerId);
       isPointerActiveRef.current = true;
 
@@ -317,18 +360,41 @@ export function useCanvas({
       // Settings are captured per stroke, so changing them mid-stroke has no effect
       stabilizerRef.current = createStabilizer(smoothingRef.current);
       activeBrushSizeRef.current = brushSize;
+      activeColorRef.current = userStrokeColorRef.current;
+      activeOpacityRef.current = brushOpacity;
       activePointsRef.current = [stabilizerRef.current.push(point) ?? point];
       rawPointsRef.current = [point];
       lastPointerPointRef.current = point;
       onCurrentStrokePointCountChange?.(1);
-      onActiveStrokeChange?.({ points: [{ ...point }], brushSize: activeBrushSizeRef.current });
+      onActiveStrokeChange?.({
+        points: [{ ...point }],
+        brushSize: activeBrushSizeRef.current,
+        color: activeColorRef.current,
+        opacity: activeOpacityRef.current,
+      });
       scheduleRedraw();
     },
-    [brushSize, onActiveStrokeChange, onCurrentStrokePointCountChange, onEraseAtPoint, onEraseStart, scheduleRedraw, tool],
+    [brushOpacity, brushSize, onActiveStrokeChange, onCurrentStrokePointCountChange, onEraseAtPoint, onEraseStart, scheduleRedraw, tool],
   );
 
   const onPointerMove = useCallback(
     (event: ReactPointerEvent<HTMLCanvasElement>) => {
+      const pan = panRef.current;
+      if (pan && pan.pointerId === event.pointerId) {
+        viewRef.current = {
+          scale: pan.origin.scale,
+          offsetX: pan.origin.offsetX + (event.clientX - pan.startX),
+          offsetY: pan.origin.offsetY + (event.clientY - pan.startY),
+        };
+        // shortcut: pełny replay warstw na każdą klatkę przesuwania. Przy kilkuset
+        // kreskach zacznie zacinać — wtedy składać bitmapy z przesunięciem zamiast
+        // rasteryzować je od nowa, bo samo przesunięcie nie zmienia skali.
+        layersDirtyRef.current = true;
+        onViewChange?.(viewRef.current);
+        scheduleRedraw();
+        return;
+      }
+
       if (!isPointerActiveRef.current || !canvasRef.current) return;
 
       const rawPoints = getPointsFromPointerEvent(event, canvasRef.current, viewRef.current);
@@ -353,7 +419,12 @@ export function useCanvas({
       if (points.length === countBefore) return;
 
       onCurrentStrokePointCountChange?.(points.length);
-      onActiveStrokeChange?.({ points: points.map((p) => ({ ...p })), brushSize: activeBrushSizeRef.current });
+      onActiveStrokeChange?.({
+        points: points.map((p) => ({ ...p })),
+        brushSize: activeBrushSizeRef.current,
+        color: activeColorRef.current,
+        opacity: activeOpacityRef.current,
+      });
       scheduleRedraw();
     },
     [onActiveStrokeChange, onCurrentStrokePointCountChange, onEraseAtPoint, scheduleRedraw, tool],
@@ -361,9 +432,18 @@ export function useCanvas({
 
   const onPointerUp = useCallback(
     (event: ReactPointerEvent<HTMLCanvasElement>) => {
+      const canvas = canvasRef.current;
+
+      const pan = panRef.current;
+      if (pan && pan.pointerId === event.pointerId) {
+        if (canvas?.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+        panRef.current = null;
+        if (canvas) canvas.style.cursor = "";
+        return;
+      }
+
       if (!isPointerActiveRef.current) return;
 
-      const canvas = canvasRef.current;
       if (canvas?.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
       isPointerActiveRef.current = false;
 
@@ -375,6 +455,8 @@ export function useCanvas({
         onStrokeComplete({
           points: refineStroke(points, smoothingRef.current).map((p) => ({ ...p })),
           brushSize: activeBrushSizeRef.current,
+          color: activeColorRef.current,
+          opacity: activeOpacityRef.current,
         }, rawPointsRef.current);
       }
       stabilizerRef.current = null;
@@ -393,7 +475,7 @@ export function useCanvas({
   // Re-render whenever strokes or colors change (e.g. eraser, undo, new stroke)
   useEffect(() => {
     scheduleRedraw();
-  }, [userStrokes, referenceStrokes, userStrokeColor, referenceStrokeColor, scheduleRedraw]);
+  }, [layers, referenceStrokes, userStrokeColor, referenceStrokeColor, scheduleRedraw]);
 
   // Wędrujące kreskowanie aktualnego kroku. Pętla chodzi tylko wtedy, gdy jest co
   // podświetlać i gdy użytkownik nie rysuje — animacja nie ma konkurować z piórem o klatki.

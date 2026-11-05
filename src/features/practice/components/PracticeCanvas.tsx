@@ -1,13 +1,15 @@
 import { useState } from 'react'
-import type { Point, SmoothingSettings, Stroke, Tool } from '../../../types/drawing'
+import type { Layer, Point, SmoothingSettings, Stroke, Tool } from '../../../types/drawing'
 import { DrawingCanvas } from '../../canvas/components/DrawingCanvas'
 import { IDENTITY_VIEW, type CanvasView } from '../../canvas/utils/canvasPoint'
 import { useCanvasColors } from '../../canvas/utils/themeColors'
 
 type PracticeCanvasProps = {
-  userStrokes: Stroke[]
+  layers: Layer[]
+  activeLayerId: string
   referenceStrokes: Stroke[]
   brushSize: number
+  brushOpacity?: number
   tool?: Tool
   smoothing?: SmoothingSettings
   userStrokeColor: string
@@ -22,9 +24,11 @@ type PracticeCanvasProps = {
 }
 
 export function PracticeCanvas({
-  userStrokes,
+  layers,
+  activeLayerId,
   referenceStrokes,
   brushSize,
+  brushOpacity,
   tool = 'brush',
   smoothing,
   userStrokeColor,
@@ -42,9 +46,11 @@ export function PracticeCanvas({
   return (
     <div className="relative h-full w-full">
       <DrawingCanvas
-        userStrokes={userStrokes}
+        layers={layers}
+        activeLayerId={activeLayerId}
         referenceStrokes={referenceStrokes}
         brushSize={brushSize}
+        brushOpacity={brushOpacity}
         tool={tool}
         smoothing={smoothing}
         onStrokeComplete={onStrokeComplete}
@@ -57,7 +63,7 @@ export function PracticeCanvas({
         guide={null}
         userStrokeColor={userStrokeColor}
         // Akcent, nie bladofiolet: to kreska, którą użytkownik ma narysować TERAZ.
-        referenceStrokeColor={colors.accent}
+        referenceStrokeColor={colors.violet}
         onViewChange={setView}
       />
       {errorMarker && (

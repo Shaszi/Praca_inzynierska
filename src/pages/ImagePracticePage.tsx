@@ -7,6 +7,7 @@ import { DrawingCanvas } from '../features/canvas/components/DrawingCanvas'
 import { useSmoothingSettings } from '../features/canvas/hooks/useSmoothingSettings'
 import { StrokeThumbnail } from '../features/progress/components/StrokeThumbnail'
 import { usePracticeSession } from '../features/progress/hooks/usePracticeSession'
+import { useSingleLayer } from '../features/canvas/hooks/useLayers'
 import { useStrokes } from '../hooks/useStrokes'
 import {
   analyzeStrokeAgainstImage,
@@ -56,6 +57,7 @@ export function ImagePracticePage() {
     strokes, addStroke, undoStroke, redoStroke, clearStrokes,
     beginEraseSession, eraseInSession, endEraseSession, canUndo, canRedo,
   } = useStrokes()
+  const canvasLayers = useSingleLayer(strokes)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -164,7 +166,7 @@ export function ImagePracticePage() {
   }, [canUndo, canRedo, handleUndo, redoStroke])
 
   // Shared wrapper — full-height card holding the canvas and floating panels
-  const fullArea = 'relative flex min-h-[600px] flex-1 overflow-hidden rounded-2xl border border-line bg-surface'
+  const fullArea = 'relative flex min-h-[600px] flex-1 overflow-hidden rounded-[22px] border border-line bg-surface'
 
   // --- Upload phase ---
   if (phase === 'upload') {
@@ -182,11 +184,11 @@ export function ImagePracticePage() {
           onDragLeave={handleDragLeave}
           onClick={() => fileInputRef.current?.click()}
           onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') fileInputRef.current?.click() }}
-          className={`flex flex-1 cursor-pointer flex-col items-center justify-center gap-4 rounded-2xl border-2 border-dashed px-6 py-20 text-center transition ${
-            isDragging ? 'border-accent bg-accent-soft/40' : 'border-line-strong bg-surface hover:border-accent hover:bg-accent-soft/40'
+          className={`flex flex-1 cursor-pointer flex-col items-center justify-center gap-4 rounded-[22px] border-2 border-dashed px-6 py-20 text-center transition ${
+            isDragging ? 'border-accent bg-accent-soft/40' : 'border-ink-faint bg-surface hover:border-accent hover:bg-accent-soft/40'
           }`}
         >
-          <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-paper-dim text-ink">
+          <span className="flex h-14 w-14 items-center justify-center rounded-[22px] bg-paper-dim text-ink">
             <ImageIcon className="h-7 w-7" />
           </span>
           <div>
@@ -196,7 +198,7 @@ export function ImagePracticePage() {
           <input ref={fileInputRef} type="file" accept={ACCEPTED_TYPES.join(',')} className="hidden" onChange={handleFileChange} />
         </div>
         {analyzeError && (
-          <p className="rounded-xl bg-danger-soft px-3.5 py-3 text-sm font-medium text-danger">{analyzeError}</p>
+          <p className="rounded-[16px] bg-danger-soft px-3.5 py-3 text-sm font-medium text-danger">{analyzeError}</p>
         )}
       </section>
     )
@@ -221,9 +223,9 @@ export function ImagePracticePage() {
       <section className="flex w-full flex-1 flex-col items-center justify-center gap-8 py-8 text-center">
         <div className="flex items-center gap-4">
           {imageUrl && (
-            <img src={imageUrl} alt="Zdjęcie wzorcowe" className="h-32 w-32 rounded-2xl border border-line object-cover sm:h-40 sm:w-40" />
+            <img src={imageUrl} alt="Zdjęcie wzorcowe" className="h-32 w-32 rounded-[22px] border border-line object-cover sm:h-40 sm:w-40" />
           )}
-          <div className="h-32 w-32 rounded-2xl border border-line bg-surface p-3 sm:h-40 sm:w-40">
+          <div className="h-32 w-32 rounded-[22px] border border-line bg-surface p-3 sm:h-40 sm:w-40">
             <StrokeThumbnail strokes={strokes} className="h-full w-full" />
           </div>
         </div>
@@ -237,7 +239,7 @@ export function ImagePracticePage() {
         <div className="flex flex-wrap justify-center gap-2">
           <Link
             to="/app/progress"
-            className="flex min-h-11 items-center rounded-[10px] border border-line-strong bg-surface px-4 text-[15px] font-semibold text-ink transition hover:bg-surface-dim"
+            className="flex min-h-11 items-center rounded-full border border-ink-faint bg-surface px-4 text-[15px] font-semibold text-ink transition hover:bg-surface-dim"
           >
             Zobacz postęp
           </Link>
@@ -254,14 +256,14 @@ export function ImagePracticePage() {
   const canRetry = awaitingNext && !isAnalyzingAI && canUndo
   const isLastStep = stepIndex >= steps.length - 1
   const floating =
-    'rounded-xl border border-line bg-surface/90 shadow-[0_8px_24px_-12px_rgba(29,28,26,0.25)] backdrop-blur-md'
+    'rounded-full border border-line bg-surface/[0.88] shadow-[var(--shadow-float)] backdrop-blur-[10px]'
 
   return (
     <section className={fullArea}>
       {/* Canvas fills entire area via absolute positioning */}
       <div className="absolute inset-0 [&>div]:rounded-none [&>div]:border-0">
         <DrawingCanvas
-          userStrokes={strokes}
+          layers={canvasLayers}
           brushSize={brushSize}
           tool={tool}
           smoothing={smoothing}
@@ -298,15 +300,15 @@ export function ImagePracticePage() {
         />
 
         <div className={`pointer-events-auto flex items-center gap-3 px-2.5 py-2 ${floating}`}>
-          {imageUrl && <img src={imageUrl} alt="Zdjęcie wzorcowe" className="h-9 w-9 rounded-lg object-cover" />}
+          {imageUrl && <img src={imageUrl} alt="Zdjęcie wzorcowe" className="h-9 w-9 rounded-[12px] object-cover" />}
           <div className="min-w-0">
             <p className="font-mono text-xs uppercase tracking-[0.04em] text-ink-faint">Krok {stepIndex + 1} z {steps.length}</p>
             <div className="mt-1 flex gap-[3px]">
               {steps.map((step, index) => (
                 <span
                   key={step.id}
-                  className={`h-1.5 w-4 rounded-full ${
-                    index < stepIndex ? 'bg-accent' : index === stepIndex ? 'bg-ink' : 'bg-paper-dim'
+                  className={`h-1.5 rounded-full transition-all ${
+                    index < stepIndex ? 'w-4 bg-success' : index === stepIndex ? 'w-[26px] bg-accent' : 'w-4 bg-surface-dim'
                   }`}
                 />
               ))}
@@ -330,7 +332,8 @@ export function ImagePracticePage() {
             {isAnalyzingAI ? (
               <div className="mt-1 flex items-center gap-2 text-ink-soft">
                 <TypingDots />
-                <span className="text-sm">Analizuję rysunek…</span>
+                {/* Tu model naprawdę pracuje — to nie animacja odsłonięcia jak w trybie z wzorcem. */}
+                <span className="text-sm">Model analizuje tę kreskę…</span>
               </div>
             ) : (
               <p className={`mt-0.5 text-sm leading-relaxed ${aiFeedback ? 'text-ink' : 'text-ink-faint'}`}>

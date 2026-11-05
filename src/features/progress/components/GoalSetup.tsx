@@ -32,7 +32,7 @@ export function GoalSetup({ initialDays = 30, onSave, onCancel, onClear }: GoalS
   }
 
   return (
-    <form onSubmit={handleSubmit} className="rounded-2xl border border-line bg-surface p-[18px] sm:p-6">
+    <form onSubmit={handleSubmit} className="rounded-[22px] border border-line bg-surface p-[18px] sm:p-6">
       <p className="text-[22px] font-bold tracking-[-0.01em] text-ink">Ile dni chcesz ćwiczyć?</p>
       <p className="mt-1 max-w-xl text-ink-faint">
         Dzień liczy się, gdy ukończysz w nim co najmniej jeden rysunek. Postęp liczony jest od dziś.
@@ -45,10 +45,10 @@ export function GoalSetup({ initialDays = 30, onSave, onCancel, onClear }: GoalS
             type="button"
             onClick={() => setDays(preset)}
             className={[
-              'min-h-11 rounded-[10px] border px-4 font-mono text-sm font-medium transition',
+              'min-h-11 rounded-full border px-4 font-mono text-sm font-medium transition',
               days === preset
                 ? 'border-accent bg-accent text-on-accent'
-                : 'border-line-strong bg-surface text-ink-soft hover:bg-surface-dim',
+                : 'border-ink-faint bg-surface text-ink-soft hover:bg-surface-dim',
             ].join(' ')}
           >
             {preset} dni
@@ -72,7 +72,7 @@ export function GoalSetup({ initialDays = 30, onSave, onCancel, onClear }: GoalS
           max={365}
           value={days}
           onChange={(e) => setDays(Math.min(365, Math.max(1, Number(e.target.value) || 1)))}
-          className="min-h-11 w-24 rounded-[10px] border border-line-strong bg-surface px-2 text-center font-mono focus:border-accent focus:outline-none"
+          className="min-h-11 w-24 rounded-full border border-ink-faint bg-surface px-2 text-center font-mono focus:border-accent focus:outline-none"
           aria-label="Liczba dni (pole liczbowe)"
         />
       </div>
@@ -83,12 +83,12 @@ export function GoalSetup({ initialDays = 30, onSave, onCancel, onClear }: GoalS
         <button
           type="submit"
           disabled={isSaving}
-          className="min-h-11 rounded-[10px] bg-accent px-4 text-[15px] font-semibold text-on-accent transition hover:bg-accent-strong disabled:opacity-60"
+          className="min-h-11 rounded-full bg-accent px-4 text-[15px] font-semibold text-on-accent transition hover:bg-accent-strong disabled:opacity-60"
         >
           Ustaw cel: {days} dni
         </button>
         {onCancel && (
-          <button type="button" onClick={onCancel} className="min-h-11 rounded-[10px] border border-line-strong bg-surface px-4 text-[15px] font-semibold text-ink hover:bg-surface-dim">
+          <button type="button" onClick={onCancel} className="min-h-11 rounded-full border border-ink-faint bg-surface px-4 text-[15px] font-semibold text-ink hover:bg-surface-dim">
             Anuluj
           </button>
         )}
@@ -97,7 +97,7 @@ export function GoalSetup({ initialDays = 30, onSave, onCancel, onClear }: GoalS
             type="button"
             disabled={isSaving}
             onClick={() => run(onClear)}
-            className="ml-auto min-h-11 rounded-[10px] px-3 text-sm font-semibold text-ink-faint hover:bg-danger-soft hover:text-danger"
+            className="ml-auto min-h-11 rounded-full px-3 text-sm font-semibold text-ink-faint hover:bg-danger-soft hover:text-danger"
           >
             Usuń cel
           </button>

@@ -21,6 +21,7 @@ export function StrokeThumbnail({ strokes, className = '' }: { strokes: Stroke[]
     const offsetY = (SIZE - height * scale) / 2
 
     return strokes.map((stroke) => ({
+      color: stroke.color,
       width: Math.max(stroke.brushSize * scale, 0.8),
       d: stroke.points
         .map((p, i) => `${i === 0 ? 'M' : 'L'}${((p.x - minX) * scale + offsetX).toFixed(1)} ${((p.y - minY) * scale + offsetY).toFixed(1)}`)
@@ -38,7 +39,8 @@ export function StrokeThumbnail({ strokes, className = '' }: { strokes: Stroke[]
           strokeWidth={path.width}
           strokeLinecap="round"
           strokeLinejoin="round"
-          className="stroke-ink"
+          stroke={path.color}
+          className={path.color ? undefined : 'stroke-ink'}
         />
       ))}
     </svg>

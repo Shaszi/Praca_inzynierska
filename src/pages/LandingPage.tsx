@@ -27,15 +27,15 @@ export function LandingPage() {
         <BrandMark />
         <nav className="flex items-center gap-2 text-sm">
           {user ? (
-            <Link to="/app" className="flex min-h-11 items-center rounded-[10px] bg-accent px-4 font-semibold text-on-accent hover:bg-accent-strong">
+            <Link to="/app" className="flex min-h-11 items-center rounded-full bg-accent px-4 font-semibold text-on-accent hover:bg-accent-strong">
               Otwórz aplikację
             </Link>
           ) : (
             <>
-              <Link to="/login" className="flex min-h-11 items-center rounded-[10px] px-3 font-semibold text-ink-soft hover:text-ink">
+              <Link to="/login" className="flex min-h-11 items-center rounded-full px-3 font-semibold text-ink-soft hover:text-ink">
                 Zaloguj się
               </Link>
-              <Link to="/signup" className="flex min-h-11 items-center rounded-[10px] bg-accent px-4 font-semibold text-on-accent hover:bg-accent-strong">
+              <Link to="/signup" className="flex min-h-11 items-center rounded-full bg-accent px-4 font-semibold text-on-accent hover:bg-accent-strong">
                 Załóż konto
               </Link>
             </>
@@ -55,14 +55,14 @@ export function LandingPage() {
             <div className="mt-8 flex flex-wrap gap-3">
               <Link
                 to={user ? '/app' : '/signup'}
-                className="flex min-h-11 items-center rounded-[10px] bg-accent px-5 font-semibold text-on-accent transition hover:bg-accent-strong"
+                className="flex min-h-11 items-center rounded-full bg-accent px-5 font-semibold text-on-accent transition hover:bg-accent-strong"
               >
                 {user ? 'Wróć do ćwiczeń' : 'Zacznij za darmo'}
               </Link>
               {!user && (
                 <Link
                   to="/login"
-                  className="flex min-h-11 items-center rounded-[10px] border border-line-strong bg-surface px-5 font-semibold text-ink transition hover:bg-surface-dim"
+                  className="flex min-h-11 items-center rounded-full border border-ink-faint bg-surface px-5 font-semibold text-ink transition hover:bg-surface-dim"
                 >
                   Mam już konto
                 </Link>
@@ -70,9 +70,9 @@ export function LandingPage() {
             </div>
           </div>
 
-          <div className="overflow-hidden rounded-2xl border border-line bg-surface">
+          <div className="overflow-hidden rounded-[22px] border border-line bg-surface">
             <div className="bg-surface-dim p-4">
-              <div className="rounded-[10px] bg-surface p-6 shadow-[0_0_0_1px_var(--color-line)]">
+              <div className="rounded-full bg-surface p-6 shadow-[0_0_0_1px_var(--color-line)]">
                 <SketchIllustration className="w-full" />
               </div>
             </div>
@@ -89,7 +89,7 @@ export function LandingPage() {
 
         <section className="grid gap-4 md:grid-cols-3">
           {features.map((feature) => (
-            <article key={feature.title} className="rounded-2xl border border-line bg-surface p-[18px]">
+            <article key={feature.title} className="rounded-[22px] border border-line bg-surface p-[18px]">
               <h2 className="text-[17px] font-bold text-ink">{feature.title}</h2>
               <p className="mt-1.5 text-sm leading-relaxed text-ink-soft">{feature.body}</p>
             </article>

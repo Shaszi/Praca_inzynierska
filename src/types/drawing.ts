@@ -7,6 +7,10 @@ export type Point = {
 export type Stroke = {
   points: Point[]
   brushSize: number
+  /** Kolor nadany przy rysowaniu. Brak = kolor domyślny płótna (stare zapisy i wzorce). */
+  color?: string
+  /** 0–1. Brak = pełne krycie. */
+  opacity?: number
 }
 
 export type Tool = 'brush' | 'eraser'
@@ -33,6 +37,8 @@ export type Layer = {
   id: string
   name: string
   visible: boolean
+  /** Zablokowana warstwa nie przyjmuje kresek ani gumki. */
+  locked?: boolean
   /** 0–1 */
   opacity: number
   strokes: Stroke[]

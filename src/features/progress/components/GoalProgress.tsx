@@ -16,7 +16,7 @@ export function GoalProgress({ goal, onEdit }: { goal: GoalSummary; onEdit?: () 
   const segmented = goal.goalDays <= MAX_SEGMENTS
 
   return (
-    <div className="rounded-2xl border border-line bg-surface p-[18px] sm:p-6">
+    <div className="rounded-[22px] border border-line bg-surface p-[18px] sm:p-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <Eyebrow>Twój cel</Eyebrow>
@@ -43,7 +43,7 @@ export function GoalProgress({ goal, onEdit }: { goal: GoalSummary; onEdit?: () 
             <button
               type="button"
               onClick={onEdit}
-              className="min-h-9 rounded-[10px] border border-line-strong bg-surface px-3 text-sm font-semibold text-ink transition hover:bg-surface-dim"
+              className="min-h-9 rounded-full border border-ink-faint bg-surface px-3 text-sm font-semibold text-ink transition hover:bg-surface-dim"
             >
               Zmień cel
             </button>
@@ -73,9 +73,10 @@ export function GoalProgress({ goal, onEdit }: { goal: GoalSummary; onEdit?: () 
             ))}
           </div>
         ) : (
-          <div className="h-2.5 overflow-hidden rounded-full bg-paper-dim">
+          <div className="h-2.5 overflow-hidden rounded-full border border-line bg-paper-dim">
             <div
-              className="h-full rounded-full bg-accent transition-[width] duration-700"
+              // Gradient markera — jedno z trzech miejsc, gdzie projekt go dopuszcza.
+              className="h-full rounded-full bg-[linear-gradient(90deg,#ff5fa8_0%,#ff9a3d_55%,#ffd84a_100%)] transition-[width] duration-700"
               style={{ width: `${percent}%` }}
             />
           </div>

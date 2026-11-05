@@ -11,6 +11,10 @@ type DrawStrokeOptions = {
   view?: CanvasView
 }
 
+// Punkt startu jest zawsze miętowy — mówi „tu zacznij", więc nie zależy od koloru opaski.
+const GUIDE_START = '#3ee6a8'
+
+
 type RenderSceneOptions = {
   context: CanvasRenderingContext2D
   width: number
@@ -85,6 +89,7 @@ export function drawStroke(
   const view = options.view ?? IDENTITY_VIEW
 
   configureContext(context, options.dpr, view, options.color, lineWidth, alpha)
+
   if (options.dashPattern) {
     context.setLineDash(options.dashPattern)
     context.lineDashOffset = options.dashOffset ?? 0
@@ -136,28 +141,31 @@ export function drawGuideStroke(
 
   const { color, dpr, view = IDENTITY_VIEW, dashOffset = 0 } = options
 
+  // Opaska pod aktywną kreską: fiolet, krycie .35, grubość 14 — wartości z projektu.
   drawStroke(context, stroke, {
     color,
     dpr,
     view,
-    alpha: 0.16,
-    lineWidthOverride: stroke.brushSize + 12,
+    alpha: 0.4,
+    lineWidthOverride: 16,
   })
 
+  // Wędrujące kreskowanie zostaje — użytkownik chciał je zachować.
   drawStroke(context, stroke, {
     color,
     dpr,
     view,
-    alpha: 0.95,
+    alpha: 0.9,
     dashPattern: [11, 9],
     // Ujemne, żeby kreskowanie wędrowało w stronę rysowania, nie przeciwnie.
     dashOffset: -dashOffset,
   })
 
+  // Punkt startu jest miętowy, bo mówi „tu zacznij", a nie „tu jest błąd".
   const start = stroke.points[0]
-  configureContext(context, dpr, view, color, 1, 1)
+  configureContext(context, dpr, view, GUIDE_START, 1, 1)
   context.beginPath()
-  context.arc(start.x, start.y, Math.max(4, stroke.brushSize * 0.9), 0, Math.PI * 2)
+  context.arc(start.x, start.y, 7, 0, Math.PI * 2)
   context.fill()
   context.globalAlpha = 1
 }
@@ -209,7 +217,14 @@ export function replayLayer(
 
   applyStamps(context, stampsAfter.get(0), dpr, view)
   for (let index = 0; index < layer.strokes.length; index += 1) {
-    drawStroke(context, layer.strokes[index], { color, dpr, view })
+    // Kolor z kreski wygrywa: zmiana pędzla nie przemalowuje starych linii.
+    const stroke = layer.strokes[index]
+    drawStroke(context, stroke, {
+      color: stroke.color ?? color,
+      alpha: stroke.opacity ?? 1,
+      dpr,
+      view,
+    })
     applyStamps(context, stampsAfter.get(index + 1), dpr, view)
   }
 
@@ -265,7 +280,8 @@ export function renderCanvasScene({
 
   if (activeStroke) {
     drawStroke(context, activeStroke, {
-      color: userStrokeColor,
+      color: activeStroke.color ?? userStrokeColor,
+      alpha: activeStroke.opacity ?? 1,
       dpr,
       view,
     })

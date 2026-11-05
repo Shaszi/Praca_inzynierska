@@ -22,7 +22,7 @@ export function ReferenceLibrary({ references, selectedId, isLoading, onLoad, on
 
   if (references.length === 0) {
     return (
-      <p className="rounded-xl border border-dashed border-line-strong px-4 py-8 text-center text-sm text-ink-soft">
+      <p className="rounded-[18px] border border-dashed border-line-strong px-4 py-8 text-center text-sm text-ink-soft">
         Zapisane wzorce pojawią się tutaj.
       </p>
     )
@@ -37,7 +37,7 @@ export function ReferenceLibrary({ references, selectedId, isLoading, onLoad, on
           <li
             key={reference.id}
             className={[
-              'group flex flex-col overflow-hidden rounded-xl border bg-surface transition lg:flex-row lg:items-center',
+              'group flex flex-col overflow-hidden rounded-[18px] border bg-surface transition lg:flex-row lg:items-center',
               isSelected ? 'border-ink' : 'border-line hover:border-line-strong',
             ].join(' ')}
           >
@@ -47,7 +47,7 @@ export function ReferenceLibrary({ references, selectedId, isLoading, onLoad, on
               title="Wczytaj na płótno"
               className="flex min-w-0 flex-1 flex-col text-left lg:flex-row lg:items-center lg:gap-3 lg:p-2"
             >
-              <span className="block aspect-square w-full shrink-0 border-b border-line bg-paper p-2 lg:h-12 lg:w-12 lg:rounded-lg lg:border lg:p-1.5">
+              <span className="block aspect-square w-full shrink-0 border-b border-line bg-paper p-2 lg:h-12 lg:w-12 lg:rounded-[14px] lg:border lg:p-1.5">
                 <StrokeThumbnail strokes={reference.strokes} className="h-full w-full" />
               </span>
               <span className="min-w-0 px-3 py-2 lg:px-0 lg:py-0">

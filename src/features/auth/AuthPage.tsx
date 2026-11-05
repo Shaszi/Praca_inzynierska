@@ -77,7 +77,7 @@ export function AuthPage({ mode }: { mode: Mode }) {
   }
 
   const inputClass =
-    'min-h-11 w-full rounded-[10px] border border-line-strong bg-surface px-3 text-[15px] text-ink placeholder:text-ink-faint transition focus:border-accent focus:outline-none'
+    'min-h-11 w-full rounded-full border border-ink-faint bg-surface px-3 text-[15px] text-ink placeholder:text-ink-faint transition focus:border-accent focus:outline-none'
 
   return (
     <div className="grid min-h-screen lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
@@ -99,7 +99,7 @@ export function AuthPage({ mode }: { mode: Mode }) {
           <button
             type="button"
             onClick={handleGoogle}
-            className="mt-8 flex w-full items-center justify-center gap-2.5 min-h-11 rounded-[10px] border border-line-strong bg-surface px-4 text-[15px] font-semibold text-ink transition hover:bg-surface-dim"
+            className="mt-8 flex w-full items-center justify-center gap-2.5 min-h-11 rounded-full border border-ink-faint bg-surface px-4 text-[15px] font-semibold text-ink transition hover:bg-surface-dim"
           >
             <GoogleIcon />
             Kontynuuj z Google
@@ -148,13 +148,13 @@ export function AuthPage({ mode }: { mode: Mode }) {
               />
             </label>
 
-            {error && <p className="rounded-xl bg-danger-soft px-3.5 py-3 text-sm font-medium text-danger">{error}</p>}
-            {info && <p className="rounded-xl bg-success-soft px-3.5 py-3 text-sm font-medium text-success">{info}</p>}
+            {error && <p className="rounded-[16px] bg-danger-soft px-3.5 py-3 text-sm font-medium text-danger">{error}</p>}
+            {info && <p className="rounded-[16px] bg-success-soft px-3.5 py-3 text-sm font-medium text-success">{info}</p>}
 
             <button
               type="submit"
               disabled={isSubmitting}
-              className="mt-2 min-h-11 rounded-[10px] bg-accent px-4 text-[15px] font-semibold text-on-accent transition hover:bg-accent-strong disabled:opacity-60"
+              className="mt-2 min-h-11 rounded-full bg-accent px-4 text-[15px] font-semibold text-on-accent transition hover:bg-accent-strong disabled:opacity-60"
             >
               {isSubmitting ? 'Chwila…' : isSignup ? 'Utwórz konto' : 'Zaloguj się'}
             </button>

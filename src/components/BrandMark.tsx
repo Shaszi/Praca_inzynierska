@@ -1,23 +1,25 @@
 export function BrandMark({ className = '' }: { className?: string }) {
   return (
-    <span className={`inline-flex items-center gap-3 ${className}`}>
-      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent text-on-accent">
-        <svg
-          width="20"
-          height="20"
-          viewBox="0 0 24 24"
+    <span className={`inline-flex items-center gap-2.5 ${className}`}>
+      <svg width="34" height="34" viewBox="0 0 34 34" className="shrink-0" aria-hidden>
+        <rect width="34" height="34" rx="11" fill="var(--color-surface-dim)" />
+        <defs>
+          {/* Gradient markera. Reguła z projektu: tylko kreska, logo i pasek postępu. */}
+          <linearGradient id="brand-marker" x1="0" x2="1" y1="0" y2="0">
+            <stop offset="0" stopColor="#ff5fa8" />
+            <stop offset="0.55" stopColor="#ff9a3d" />
+            <stop offset="1" stopColor="#ffd84a" />
+          </linearGradient>
+        </defs>
+        <path
+          d="M8 22 C12 10, 16 26, 20 15 S 25 12, 27 11"
           fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
+          stroke="url(#brand-marker)"
+          strokeWidth="4"
           strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden
-        >
-          <path d="M3 21c3-1 5-3 7-6" />
-          <path d="M14.5 4.5l5 5L10 19l-5 1 1-5z" />
-        </svg>
-      </span>
-      <span className="text-[17px] font-bold tracking-[-0.01em] text-ink">Trening kreski</span>
+        />
+      </svg>
+      <span className="font-display text-[19px] font-bold tracking-[-0.02em] text-ink">Kreska</span>
     </span>
   )
 }

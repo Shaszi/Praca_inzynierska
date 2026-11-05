@@ -24,6 +24,8 @@ export function isModernStroke(value: unknown): value is Stroke {
   return (
     isFiniteNumber(stroke.brushSize) &&
     stroke.brushSize > 0 &&
+    (stroke.color === undefined || (typeof stroke.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(stroke.color))) &&
+    (stroke.opacity === undefined || (isFiniteNumber(stroke.opacity) && stroke.opacity > 0 && stroke.opacity <= 1)) &&
     Array.isArray(stroke.points) &&
     stroke.points.every((point) => isPoint(point))
   )
@@ -37,6 +39,8 @@ export function normalizeStroke(value: unknown): Stroke | null {
   if (isModernStroke(value)) {
     return {
       brushSize: value.brushSize,
+      ...(value.color !== undefined ? { color: value.color } : {}),
+      ...(value.opacity !== undefined ? { opacity: value.opacity } : {}),
       points: value.points.map((point) => ({ ...point })),
     }
   }

@@ -7,7 +7,7 @@ export function SessionGrid({ sessions }: { sessions: PracticeSessionSummary[] }
   return (
     <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
       {sessions.map((session) => (
-        <li key={session.id} className="overflow-hidden rounded-xl border border-line bg-surface">
+        <li key={session.id} className="overflow-hidden rounded-[18px] border border-line bg-surface">
           <div className="aspect-square border-b border-line bg-paper p-3">
             {session.finalStrokes?.length ? (
               <StrokeThumbnail strokes={session.finalStrokes} className="h-full w-full" />

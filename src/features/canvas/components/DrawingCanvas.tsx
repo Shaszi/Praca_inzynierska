@@ -1,16 +1,18 @@
 import { useCallback, useRef, useState } from 'react'
 import type { PointerEvent as ReactPointerEvent } from 'react'
 import { useCanvas } from '../hooks/useCanvas'
-import type { GuideType, Point, SmoothingSettings, Stroke, Tool } from '../../../types/drawing'
+import type { GuideType, Layer, Point, SmoothingSettings, Stroke, Tool } from '../../../types/drawing'
 import { IDENTITY_VIEW, type CanvasView } from '../utils/canvasPoint'
 import { useCanvasColors } from '../utils/themeColors'
 import { CanvasOverlay } from './CanvasOverlay'
 import { CanvasRenderer } from './CanvasRenderer'
 
 type DrawingCanvasProps = {
-  userStrokes: Stroke[]
+  layers: Layer[]
+  activeLayerId?: string
   referenceStrokes?: Stroke[]
   brushSize: number
+  brushOpacity?: number
   tool?: Tool
   smoothing?: SmoothingSettings
   onStrokeComplete: (stroke: Stroke, rawPoints: Point[]) => void
@@ -29,9 +31,10 @@ type DrawingCanvasProps = {
 }
 
 export function DrawingCanvas({
-  userStrokes,
+  layers,
   referenceStrokes = [],
   brushSize,
+  brushOpacity,
   tool = 'brush',
   smoothing,
   onStrokeComplete,
@@ -63,9 +66,10 @@ export function DrawingCanvas({
   )
 
   const { canvasRef, containerRef, onPointerDown, onPointerMove, onPointerUp } = useCanvas({
-    userStrokes,
+    layers,
     referenceStrokes,
     brushSize,
+    brushOpacity,
     tool,
     smoothing,
     onStrokeComplete,
@@ -119,7 +123,9 @@ export function DrawingCanvas({
   return (
     <div
       ref={containerRef}
-      className="relative h-full w-full overflow-hidden rounded-xl border border-line bg-surface"
+      className="relative h-full w-full overflow-hidden rounded-[22px] border border-line bg-paper-dim"
+      // Kropkowa siatka kanwy, gęstsza niż siatka tła — jak blat szkicownika w projekcie.
+      style={{ backgroundImage: 'var(--canvas-dots)', backgroundSize: '22px 22px' }}
     >
       {/* Background image — lowest layer. Jedzie z widokiem, inaczej po przybliżeniu
           zdjęcie zostałoby na miejscu, a rysunek odjechał. */}

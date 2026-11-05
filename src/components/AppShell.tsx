@@ -1,9 +1,9 @@
 import type { ComponentType, SVGProps } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
 import { useAuth } from '../features/auth/authContext'
+import { useProgress } from '../features/progress/hooks/useProgress'
 import { BrandMark } from './BrandMark'
-import { setTheme, useTheme } from '../features/theme/theme'
-import { ChartIcon, HomeIcon, ImageIcon, LayersIcon, LogOutIcon, MoonIcon, PencilIcon, SunIcon } from './icons'
+import { ChartIcon, HomeIcon, ImageIcon, LayersIcon, LogOutIcon, PencilIcon } from './icons'
 
 type NavItem = {
   to: string
@@ -13,13 +13,20 @@ type NavItem = {
   end?: boolean
 }
 
+// Etykiety i kolejność wprost z projektu.
 const navItems: NavItem[] = [
-  { to: '/app', label: 'Pulpit', shortLabel: 'Pulpit', icon: HomeIcon, end: true },
-  { to: '/app/practice', label: 'Ćwiczenia z wzorcem', shortLabel: 'Wzorzec', icon: PencilIcon, end: true },
-  { to: '/app/practice/image', label: 'Rysuj ze zdjęcia', shortLabel: 'Zdjęcie', icon: ImageIcon },
-  { to: '/app/references', label: 'Moje wzorce', shortLabel: 'Wzorce', icon: LayersIcon },
+  { to: '/app', label: 'Start', shortLabel: 'Start', icon: HomeIcon, end: true },
+  { to: '/app/practice', label: 'Ćwicz', shortLabel: 'Ćwicz', icon: PencilIcon, end: true },
+  { to: '/app/references', label: 'Wzorce', shortLabel: 'Wzorce', icon: LayersIcon },
+  { to: '/app/practice/image', label: 'Ze zdjęcia', shortLabel: 'Zdjęcie', icon: ImageIcon },
   { to: '/app/progress', label: 'Postęp', shortLabel: 'Postęp', icon: ChartIcon },
 ]
+
+function initials(label: string): string {
+  const parts = label.trim().split(/[\s@._-]+/).filter(Boolean)
+  if (parts.length === 0) return '?'
+  return (parts[0][0] + (parts[1]?.[0] ?? '')).toUpperCase()
+}
 
 function userLabel(user: ReturnType<typeof useAuth>['user']): string {
   const meta = user?.user_metadata as { display_name?: string; full_name?: string; name?: string } | undefined
@@ -36,7 +43,7 @@ export function AppShell() {
         <BrandMark />
 
         <nav
-          className="hidden flex-wrap gap-1 rounded-xl border border-line bg-surface p-1 md:flex"
+          className="hidden flex-wrap gap-1 md:flex"
           aria-label="Nawigacja główna"
         >
           {navItems.map(({ to, label, icon: ItemIcon, end }) => (
@@ -46,11 +53,8 @@ export function AppShell() {
               end={end}
               className={({ isActive }) =>
                 [
-                  'flex min-h-11 items-center gap-2 rounded-[9px] px-4 text-[15px] font-medium transition',
-                  // Miękka pastylka akcentu zamiast czarnego bloku — zgodnie z makietą.
-                  isActive
-                    ? 'bg-accent-soft font-semibold text-accent'
-                    : 'text-ink-soft hover:bg-surface-dim hover:text-ink',
+                  'flex min-h-10 items-center gap-2 rounded-full px-3.5 text-sm font-semibold transition',
+                  isActive ? 'bg-surface-dim text-ink' : 'text-ink-faint hover:text-ink',
                 ].join(' ')
               }
             >
@@ -60,15 +64,19 @@ export function AppShell() {
           ))}
         </nav>
 
-        <div className="flex items-center gap-2">
-          <span className="hidden max-w-40 truncate text-sm text-ink-faint lg:block" title={name}>
-            {name}
+        <div className="flex items-center gap-2.5">
+          <StreakChip />
+          <span
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-cyan text-sm font-bold text-on-accent"
+            title={name}
+            aria-hidden
+          >
+            {initials(name)}
           </span>
-          <ThemeToggle />
           <button
             type="button"
             onClick={signOut}
-            className="flex min-h-11 items-center gap-2 rounded-[10px] border border-line-strong bg-surface px-3 text-sm font-semibold text-ink transition hover:bg-surface-dim"
+            className="flex min-h-11 items-center gap-2 rounded-full bg-surface-dim px-4 text-sm font-semibold text-ink-soft transition hover:bg-line-strong hover:text-ink"
           >
             <LogOutIcon className="h-4 w-4" />
             <span className="hidden sm:inline">Wyloguj</span>
@@ -107,19 +115,25 @@ export function AppShell() {
   )
 }
 
-function ThemeToggle() {
-  const theme = useTheme()
-  const next = theme === 'dark' ? 'light' : 'dark'
+/**
+ * Odznaka serii w pasku — w projekcie jest widoczna na każdym ekranie.
+ *
+ * shortcut: osobna instancja useProgress, więc na Starcie i Postępie dane lecą dwa razy.
+ * Przenieść do wspólnego kontekstu albo cache zapytań, gdy dojdzie trzeci konsument.
+ */
+function StreakChip() {
+  const { streaks, isLoading } = useProgress()
+  if (isLoading || streaks.current === 0) return null
 
   return (
-    <button
-      type="button"
-      onClick={() => setTheme(next)}
-      title={next === 'dark' ? 'Przełącz na ciemny' : 'Przełącz na jasny'}
-      aria-label={next === 'dark' ? 'Przełącz na ciemny motyw' : 'Przełącz na jasny motyw'}
-      className="flex min-h-11 w-11 items-center justify-center rounded-[10px] border border-line-strong bg-surface text-ink-soft transition hover:bg-surface-dim hover:text-ink"
-    >
-      {theme === 'dark' ? <SunIcon className="h-[18px] w-[18px]" /> : <MoonIcon className="h-[18px] w-[18px]" />}
-    </button>
+    <span className="inline-flex min-h-[34px] items-center gap-1.5 rounded-full bg-[rgb(255_154_61_/_0.14)] px-3.5 text-sm font-bold text-orange">
+      <svg width="14" height="16" viewBox="0 0 14 16" aria-hidden>
+        <path
+          d="M7 0C8 4 13 6 13 10.5A6 6 0 0 1 1 10.5C1 8 3 7 4 5c.5 2 1.5 3 2.5 3C6 5 6 2 7 0z"
+          fill="currentColor"
+        />
+      </svg>
+      <span className="font-mono">{streaks.current}</span>
+    </span>
   )
 }

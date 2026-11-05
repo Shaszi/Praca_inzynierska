@@ -1,4 +1,5 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
+import { Spinner } from '../../components/ui'
 import { useAuth } from './authContext'
 
 export function RequireAuth() {
@@ -8,7 +9,7 @@ export function RequireAuth() {
   if (isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-line border-t-ink" />
+        <Spinner className="h-6 w-6" />
       </div>
     )
   }

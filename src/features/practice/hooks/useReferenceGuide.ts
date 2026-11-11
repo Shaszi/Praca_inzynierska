@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useLocation, useSearchParams } from 'react-router-dom'
 import { referenceStorageService } from '../../teacher/services/referenceStorageService'
 import { WARMUPS } from '../warmups'
 import type { Guide, ReferenceDrawing, Stroke } from '../../../types/drawing'
@@ -15,24 +15,44 @@ type UseReferenceGuideResult = {
   refreshReferences: () => void
 }
 
+/**
+ * Jedna lista wzorców do wyboru: wbudowane rozgrzewki, wzorzec wczytany z pliku
+ * (jeśli przyszedł z biblioteki) i to, co oddała baza. Id decyduje o tożsamości —
+ * plik z dysku może nosić id wiersza, który już jest w bazie, a dwie opcje `<select>`
+ * o tym samym `value` dają niewybieralną pozycję.
+ */
+export function mergeReferences(
+  local: ReferenceDrawing | null,
+  loaded: ReferenceDrawing[],
+): ReferenceDrawing[] {
+  const byId = new Map<string, ReferenceDrawing>()
+  for (const reference of [...WARMUPS, ...(local ? [local] : []), ...loaded]) {
+    if (!byId.has(reference.id)) byId.set(reference.id, reference)
+  }
+  return [...byId.values()]
+}
+
 export function useReferenceGuide(): UseReferenceGuideResult {
   const [searchParams] = useSearchParams()
-  // Rozgrzewki są zawsze na liście, też zanim baza odpowie — kafelek z pulpitu
-  // linkuje wprost do jednej z nich i ma zadziałać od razu.
-  const [references, setReferences] = useState<ReferenceDrawing[]>(WARMUPS)
-  const [selectedReferenceId, setSelectedReferenceId] = useState(() => searchParams.get('wzorzec') ?? '')
+  const { state } = useLocation()
+  // Plik z dysku nie trafia do bazy — biblioteka podaje go w stanie nawigacji.
+  const localReference = (state as { localReference?: ReferenceDrawing } | null)?.localReference ?? null
+
+  const [loaded, setLoaded] = useState<ReferenceDrawing[]>([])
+  // `?ref=` ustawia wybór przy wejściu: tak linkuje biblioteka i kafelki rozgrzewek.
+  const [selectedReferenceId, setSelectedReferenceId] = useState(
+    () => localReference?.id ?? searchParams.get('ref') ?? '',
+  )
   const [isLoadingReferences, setIsLoadingReferences] = useState(true)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [reloadToken, setReloadToken] = useState(0)
 
   useEffect(() => {
     let cancelled = false
-    referenceStorageService.loadReferences().then(({ data, error }) => {
+    referenceStorageService.loadReferences('available').then(({ data, error }) => {
       if (cancelled) return
-      const all = [...WARMUPS, ...data]
-      setReferences(all)
+      setLoaded(data)
       setErrorMessage(error)
-      setSelectedReferenceId((current) => (all.some((reference) => reference.id === current) ? current : ''))
       setIsLoadingReferences(false)
     })
     return () => {
@@ -40,6 +60,12 @@ export function useReferenceGuide(): UseReferenceGuideResult {
     }
   }, [reloadToken])
 
+  // Rozgrzewki są na liście od pierwszego renderu, jeszcze zanim baza odpowie.
+  const references = useMemo(() => mergeReferences(localReference, loaded), [localReference, loaded])
+
+  // Wybór, którego nie ma na liście (wzorzec usunięty albo cofnięty z publikacji),
+  // po prostu nie znajdzie wzorca — strona pokazuje wtedy prośbę o wybór. Nie ma
+  // potrzeby czyścić id w efekcie.
   const selectedReference = useMemo(
     () => references.find((reference) => reference.id === selectedReferenceId) ?? null,
     [references, selectedReferenceId],

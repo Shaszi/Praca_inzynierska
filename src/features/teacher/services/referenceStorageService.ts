@@ -5,7 +5,12 @@ import { normalizeReference } from '../utils/referenceValidation'
 import { cloneStrokes } from '../../../utils/strokes'
 import type { StorageResult } from './storageTypes'
 
-export type LibraryFilter = 'mine' | 'public' | 'pending'
+/**
+ * `available` to brak zawężenia: baza oddaje dokładnie to, na co pozwala RLS, czyli
+ * własne wzorce plus opublikowane. Tego potrzebuje ćwiczenie — `mine` ukrywało
+ * cudzy opublikowany wzorzec, więc „Ćwicz" w bibliotece prowadziło donikąd.
+ */
+export type LibraryFilter = 'mine' | 'public' | 'pending' | 'available'
 
 type Row = Tables<'drawing_references'>
 

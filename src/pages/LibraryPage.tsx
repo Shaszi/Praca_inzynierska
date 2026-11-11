@@ -12,7 +12,10 @@ import { parseImportedReference } from '../features/teacher/utils/referenceValid
 import type { ReferenceDrawing } from '../types/drawing'
 import { supabase } from '../lib/supabase'
 
-const EMPTY_TEXT: Record<LibraryFilter, string> = {
+/** Zakładki biblioteki. `available` z serwisu jest dla ćwiczenia, nie pokazujemy go tutaj. */
+type LibraryTab = Exclude<LibraryFilter, 'available'>
+
+const EMPTY_TEXT: Record<LibraryTab, string> = {
   mine: 'Nie masz jeszcze wzorców. Narysuj pierwszy w edytorze.',
   public: 'Nikt jeszcze nic nie opublikował. Możesz być pierwszy.',
   pending: 'Kolejka jest pusta — nic nie czeka na sprawdzenie.',
@@ -21,16 +24,16 @@ const EMPTY_TEXT: Record<LibraryFilter, string> = {
 export function LibraryPage() {
   const { hasRole } = useAuth()
   const navigate = useNavigate()
-  const [filter, setFilter] = useState<LibraryFilter>('public')
+  const [filter, setFilter] = useState<LibraryTab>('public')
   const [references, setReferences] = useState<ReferenceDrawing[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [message, setMessage] = useState<string | null>(null)
   const [isImporting, setIsImporting] = useState(false)
 
-  const filters: { value: LibraryFilter; label: string }[] = [
+  const filters: { value: LibraryTab; label: string }[] = [
     { value: 'public', label: 'Publiczne' },
     { value: 'mine', label: 'Moje' },
-    ...(hasRole('moderator') ? [{ value: 'pending' as LibraryFilter, label: 'Do sprawdzenia' }] : []),
+    ...(hasRole('moderator') ? [{ value: 'pending' as LibraryTab, label: 'Do sprawdzenia' }] : []),
   ]
 
   const [reloadToken, setReloadToken] = useState(0)

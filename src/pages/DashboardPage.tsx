@@ -246,7 +246,7 @@ export function DashboardPage() {
             {WARMUPS.map((warmup) => (
               <Link
                 key={warmup.id}
-                to={`/app/practice?wzorzec=${warmup.id}`}
+                to={`/app/practice?ref=${warmup.id}`}
                 className="flex items-center gap-3 rounded-[14px] bg-paper-dim p-2 transition hover:bg-surface-dim"
               >
                 <span className="h-10 w-10 shrink-0 rounded-[10px] bg-surface-dim p-1.5">{WARMUP_ART[warmup.id]}</span>

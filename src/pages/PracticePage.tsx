@@ -16,7 +16,7 @@ import type { LiveProgress } from '../features/practice/utils/strokeEvaluation'
 import { useReferenceGuide } from '../features/practice/hooks/useReferenceGuide'
 import { isWarmupId } from '../features/practice/warmups'
 import { usePracticeSession } from '../features/progress/hooks/usePracticeSession'
-import { ReferenceSelector } from '../features/teacher/components/ReferenceSelector'
+import { LibraryGrid, type LibraryAction } from '../features/teacher/components/LibraryGrid'
 import { LayerPanel } from '../features/canvas/components/LayerPanel'
 import { PRACTICE_LAYER_ID, useLayers } from '../features/canvas/hooks/useLayers'
 import { strokesBounds } from '../features/canvas/utils/canvasPoint'
@@ -48,6 +48,7 @@ export function PracticePage() {
 
   const [currentStrokePointCount, setCurrentStrokePointCount] = useState(0)
   const [isLayersOpen, setIsLayersOpen] = useState(false)
+  const [isPickerOpen, setIsPickerOpen] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [lockedWarning, setLockedWarning] = useState<string | null>(null)
   // Krótkie okno po puszczeniu kreski, w którym wynik się odsłania. Ocena jest już
@@ -240,6 +241,21 @@ export function PracticePage() {
     resetAiComment()
   }, [currentGuideStrokeIndex, discardAttempt, removeStrokesForStep, resetAnalysis, resetAiComment])
 
+  // Siatka w modalu dostaje jedną akcję: wybór kończy się zamknięciem okna.
+  const pickerActions = useMemo<LibraryAction[]>(
+    () => [
+      {
+        label: 'Wybierz',
+        variant: 'primary',
+        onRun: (id: string) => {
+          setSelectedReferenceId(id)
+          setIsPickerOpen(false)
+        },
+      },
+    ],
+    [setSelectedReferenceId],
+  )
+
   const canStepBack = currentGuideStrokeIndex > 0 || awaitingNext
 
   /** Krok w tył: wraca do poprzedniej kreski i zdejmuje ją z płótna do narysowania od nowa. */
@@ -322,15 +338,8 @@ export function PracticePage() {
   return (
     <section className="flex min-h-0 w-full flex-1 flex-col gap-4">
       <PageHeader title="Ćwiczenie z wzorcem" description="Odrysuj podświetloną linię jednym pociągnięciem.">
-        <ReferenceSelector
-          references={savedReferences}
-          selectedId={selectedReference ? selectedReferenceId : ''}
-          onSelect={setSelectedReferenceId}
-          label="Wzorzec"
-          emptyOptionLabel={isLoadingReferences ? 'Ładowanie…' : 'Wybierz wzorzec'}
-        />
-        <Button variant="ghost" size="sm" onClick={refreshReferences} disabled={isLoadingReferences}>
-          Odśwież
+        <Button variant="primary" onClick={() => setIsPickerOpen(true)}>
+          {selectedReference ? `Wzorzec: ${selectedReference.name}` : 'Wybierz wzorzec'}
         </Button>
       </PageHeader>
 
@@ -476,7 +485,27 @@ export function PracticePage() {
         </section>
         )}
 
-        {lockedWarning && (
+        {isPickerOpen && (
+        <Modal title="Wybierz wzorzec" size="lg" closeLabel="Zamknij" onClose={() => setIsPickerOpen(false)}>
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <Button variant="ghost" size="sm" onClick={refreshReferences} disabled={isLoadingReferences}>
+              Odśwież
+            </Button>
+            <Link to="/app/library" className="text-sm font-semibold text-accent underline-offset-2 hover:underline">
+              Otwórz pełną bibliotekę
+            </Link>
+          </div>
+          <LibraryGrid
+            references={savedReferences}
+            isLoading={isLoadingReferences}
+            showStatus={false}
+            emptyText="Nie ma żadnego wzorca. Narysuj własny w edytorze albo zajrzyj do biblioteki."
+            actions={pickerActions}
+          />
+        </Modal>
+      )}
+
+      {lockedWarning && (
           <Modal title="Warstwa jest zablokowana" onClose={() => setLockedWarning(null)}>
             Warstwa „{lockedWarning}" jest zablokowana, więc nie da się na niej rysować ani
             wymazywać. Zdejmij kłódkę w panelu warstw albo wybierz inną warstwę.

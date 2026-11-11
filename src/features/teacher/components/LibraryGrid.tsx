@@ -26,11 +26,14 @@ export function LibraryGrid({
   isLoading,
   emptyText,
   actions,
+  showStatus = true,
 }: {
   references: ReferenceDrawing[]
   isLoading: boolean
   emptyText: string
   actions: LibraryAction[]
+  /** Plakietka publikacji nie ma sensu przy wyborze wzorca do ćwiczenia ani przy rozgrzewkach. */
+  showStatus?: boolean
 }) {
   const [confirming, setConfirming] = useState<string | null>(null)
 
@@ -72,9 +75,11 @@ export function LibraryGrid({
                 {reference.strokes.length} {plural(reference.strokes.length, 'kreska', 'kreski', 'kresek')}
                 {reference.authorName ? ` · ${reference.authorName}` : ''}
               </span>
-              <span className={`mt-1 self-start rounded-full px-2.5 py-1 text-[12px] font-bold ${status.tone}`}>
-                {status.label}
-              </span>
+              {showStatus && (
+                <span className={`mt-1 self-start rounded-full px-2.5 py-1 text-[12px] font-bold ${status.tone}`}>
+                  {status.label}
+                </span>
+              )}
               {reference.publication === 'rejected' && reference.moderationReason && (
                 <span className="text-[12.5px] text-danger">Powód: {reference.moderationReason}</span>
               )}

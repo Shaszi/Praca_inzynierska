@@ -25,13 +25,13 @@ export type Database = {
           Tables: {
             "drawing_references": {
                   Row: {
-                    "created_at": string,"id": string,"name": string,"strokes": NonNullable<Json>,"user_id": string
+                    "created_at": string,"id": string,"moderated_at": string | null,"moderated_by": string | null,"moderation_reason": string | null,"name": string,"publication": string,"strokes": NonNullable<Json>,"user_id": string
                   }
                   Insert: {
-                    "created_at"?: string,"id"?: string,"name": string,"strokes": NonNullable<Json>,"user_id"?: string
+                    "created_at"?: string,"id"?: string,"moderated_at"?: string | null,"moderated_by"?: string | null,"moderation_reason"?: string | null,"name": string,"publication"?: string,"strokes": NonNullable<Json>,"user_id"?: string
                   }
                   Update: {
-                    "created_at"?: string,"id"?: string,"name"?: string,"strokes"?: NonNullable<Json>,"user_id"?: string
+                    "created_at"?: string,"id"?: string,"moderated_at"?: string | null,"moderated_by"?: string | null,"moderation_reason"?: string | null,"name"?: string,"publication"?: string,"strokes"?: NonNullable<Json>,"user_id"?: string
                   }
                   Relationships: [
                     
@@ -87,6 +87,19 @@ isOneToOne: false
                   Relationships: [
                     
                   ]
+                },"user_roles": {
+                  Row: {
+                    "created_at": string,"granted_by": string | null,"role": string,"user_id": string
+                  }
+                  Insert: {
+                    "created_at"?: string,"granted_by"?: string | null,"role": string,"user_id": string
+                  }
+                  Update: {
+                    "created_at"?: string,"granted_by"?: string | null,"role"?: string,"user_id"?: string
+                  }
+                  Relationships: [
+                    
+                  ]
                 }
           }
           Views: {
@@ -100,7 +113,15 @@ isOneToOne: false
                 }
           }
           Functions: {
-            [_ in never]: never
+            "has_role":
+{ Args: { "target_role": string }; Returns: boolean
+                           },
+"moderate_reference":
+{ Args: { "p_approved": boolean,"p_reason"?: string,"p_reference_id": string }; Returns: undefined
+                           },
+"submit_reference_for_review":
+{ Args: { "p_reference_id": string }; Returns: undefined
+                           }
           }
           Enums: {
             [_ in never]: never

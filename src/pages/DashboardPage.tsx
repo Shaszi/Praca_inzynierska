@@ -1,5 +1,7 @@
+import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { Ring } from '../components/Ring'
+import { WARMUPS } from '../features/practice/warmups'
 import { Spinner } from '../components/ui'
 import { useProgress } from '../features/progress/hooks/useProgress'
 import { challengeForDay } from '../features/progress/utils/dailyChallenge'
@@ -26,26 +28,20 @@ function Flame({ done }: { done: boolean }) {
   )
 }
 
-const WARMUPS = [
-  {
-    name: 'Proste linie',
-    minutes: 2,
-    art: (
-      <svg viewBox="0 0 40 40" fill="none" stroke="#4fd2ff" strokeWidth="2.4" strokeLinecap="round" aria-hidden>
-        <path d="M10 14h20M10 20h20M10 26h20" />
-      </svg>
-    ),
-  },
-  {
-    name: 'Elipsy',
-    minutes: 3,
-    art: (
-      <svg viewBox="0 0 40 40" fill="none" stroke="#ffd84a" strokeWidth="2.4" aria-hidden>
-        <ellipse cx="20" cy="20" rx="12" ry="7" />
-      </svg>
-    ),
-  },
-]
+// Ilustracje do wbudowanych rozgrzewek. Same ćwiczenia (nazwa, czas, kreski) żyją
+// w features/practice/warmups.ts — pulpit tylko do nich linkuje.
+const WARMUP_ART: Record<string, ReactNode> = {
+  'warmup-lines': (
+    <svg viewBox="0 0 40 40" fill="none" stroke="#4fd2ff" strokeWidth="2.4" strokeLinecap="round" aria-hidden>
+      <path d="M10 14h20M10 20h20M10 26h20" />
+    </svg>
+  ),
+  'warmup-ellipses': (
+    <svg viewBox="0 0 40 40" fill="none" stroke="#ffd84a" strokeWidth="2.4" aria-hidden>
+      <ellipse cx="20" cy="20" rx="12" ry="7" />
+    </svg>
+  ),
+}
 
 export function DashboardPage() {
   const { profile, goal, streaks, activity, today, recentSessions, isLoading, error } = useProgress()
@@ -249,15 +245,16 @@ export function DashboardPage() {
           <div className="flex flex-col gap-2">
             {WARMUPS.map((warmup) => (
               <Link
-                key={warmup.name}
-                to="/app/practice"
+                key={warmup.id}
+                to={`/app/practice?wzorzec=${warmup.id}`}
                 className="flex items-center gap-3 rounded-[14px] bg-paper-dim p-2 transition hover:bg-surface-dim"
               >
-                <span className="h-10 w-10 shrink-0 rounded-[10px] bg-surface-dim p-1.5">{warmup.art}</span>
+                <span className="h-10 w-10 shrink-0 rounded-[10px] bg-surface-dim p-1.5">{WARMUP_ART[warmup.id]}</span>
                 <span className="min-w-0">
                   <b className="block text-[14.5px]">{warmup.name}</b>
                   <small className="text-[12.5px] text-ink-faint">
-                    {warmup.minutes} {plural(warmup.minutes, 'minuta', 'minuty', 'minut')}
+                    {warmup.minutes} {plural(warmup.minutes, 'minuta', 'minuty', 'minut')} ·{' '}
+                    {warmup.strokes.length} {plural(warmup.strokes.length, 'kreska', 'kreski', 'kresek')}
                   </small>
                 </span>
               </Link>

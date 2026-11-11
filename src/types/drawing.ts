@@ -11,6 +11,9 @@ export type Stroke = {
   color?: string
   /** 0–1. Brak = pełne krycie. */
   opacity?: number
+  /** Krok wzorca, który ta kreska odrysowuje. Bez tego powiązanie kreski z krokiem
+   *  byłoby tylko pozycyjne i rozjeżdżało się po rysowaniu na szkicu albo wymazaniu. */
+  stepIndex?: number
 }
 
 export type Tool = 'brush' | 'eraser'
@@ -52,9 +55,18 @@ export type Guide = {
   strokes: Stroke[]
 }
 
+export type Publication = 'private' | 'pending' | 'public' | 'rejected'
+
 export type ReferenceDrawing = {
   id: string
   name: string
   strokes: Stroke[]
   createdAt: number
+  /** Stan publikacji. Brak = stary zapis albo plik z dysku, traktujemy jak prywatny. */
+  publication?: Publication
+  /** Czy wiersz należy do zalogowanego użytkownika. W bibliotece współdzielonej
+   *  nie można tego założyć, a od tego zależą przyciski usuwania i publikacji. */
+  isMine?: boolean
+  authorName?: string
+  moderationReason?: string | null
 }

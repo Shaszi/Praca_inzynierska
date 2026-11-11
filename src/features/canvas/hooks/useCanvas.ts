@@ -3,7 +3,14 @@ import type { PointerEvent as ReactPointerEvent } from "react";
 import type { Layer, Point, SmoothingSettings, Stroke, Tool } from "../../../types/drawing";
 import { createStabilizer, DEFAULT_SMOOTHING, POINT_SPACING_PX, refineStroke, type Stabilizer } from "../smoothing";
 import { renderCanvasScene, replayLayer } from "../utils/canvasDrawing";
-import { createPointFromPointerEvent, getPointsFromPointerEvent, IDENTITY_VIEW, type CanvasView } from "../utils/canvasPoint";
+import {
+  createPointFromPointerEvent,
+  fitView,
+  getPointsFromPointerEvent,
+  IDENTITY_VIEW,
+  type Bounds,
+  type CanvasView,
+} from "../utils/canvasPoint";
 
 type UseCanvasOptions = {
   layers: Layer[];
@@ -24,6 +31,12 @@ type UseCanvasOptions = {
   onActiveStrokeChange?: (stroke: Stroke | null) => void;
   /** Zmiana przybliżenia. Rzadka (tyknięcia kółka), więc wolno ją trzymać w stanie Reacta. */
   onViewChange?: (view: CanvasView) => void;
+  /**
+   * Prostokąt, który ma wypełnić kadr. Bez niego płótno startuje w skali 1:1 w lewym górnym
+   * rogu — tak zostaje dla edytora i trybu ze zdjęciem. Ćwiczenie podaje tu obrys całego
+   * wzorca (nie bieżącej kreski), żeby widok nie skakał między krokami.
+   */
+  fitBounds?: Bounds | null;
 };
 
 type UseCanvasResult = {
@@ -39,6 +52,8 @@ type CanvasMetrics = { width: number; height: number; dpr: number };
 
 const MIN_SCALE = 0.5;
 const MAX_SCALE = 6;
+// Margines między wzorcem a krawędzią płótna, w pikselach ekranu.
+const FIT_PADDING = 28;
 // Prędkość wędrowania kreskowania wzorca, w pikselach rysunku na sekundę.
 const GUIDE_DASH_SPEED = 26;
 
@@ -114,6 +129,7 @@ export function useCanvas({
   onCurrentStrokePointCountChange,
   onActiveStrokeChange,
   onViewChange,
+  fitBounds = null,
 }: UseCanvasOptions): UseCanvasResult {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -133,6 +149,7 @@ export function useCanvas({
   const layerCanvasesRef = useRef<Map<string, HTMLCanvasElement>>(new Map());
   const layersDirtyRef = useRef(true);
   const viewRef = useRef<CanvasView>(IDENTITY_VIEW);
+  const fitBoundsRef = useRef<Bounds | null>(fitBounds);
   // Przesuwanie płótna: środkowy przycisk albo prawy. Zapamiętujemy widok z chwili
   // startu, żeby liczyć przesunięcie od niego, a nie kumulować błędu z klatek.
   const panRef = useRef<{ pointerId: number; startX: number; startY: number; origin: CanvasView } | null>(null);
@@ -244,6 +261,15 @@ export function useCanvas({
     });
   }, [redrawScene]);
 
+  /** Widok wyjściowy: wzorzec wpisany w kadr, a bez wzorca zwykłe 1:1. */
+  const baseView = useCallback((): CanvasView => {
+    const metrics = metricsRef.current;
+    return fitView(fitBoundsRef.current, metrics.width, metrics.height, FIT_PADDING, {
+      min: MIN_SCALE,
+      max: MAX_SCALE,
+    });
+  }, []);
+
   // Przybliżenie kotwiczone w kursorze: punkt rysunku pod kursorem musi zostać na miejscu,
   // inaczej zoom „ucieka" do narożnika i nie da się nim celować.
   const zoomAt = useCallback(
@@ -252,10 +278,11 @@ export function useCanvas({
       const nextScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, current.scale * factor));
       if (nextScale === current.scale) return;
 
-      // Zatrzask na 1:1. Bez niego trafienie dokładnie w skalę 1 kółkiem jest loterią,
-      // a to jedyny sposób powrotu do widoku wyjściowego — nie ma przycisku ani panoramowania.
-      if (Math.abs(nextScale - 1) < 0.06) {
-        viewRef.current = IDENTITY_VIEW;
+      // Zatrzask na widok wyjściowy. Bez niego trafienie w niego kółkiem jest loterią,
+      // a to jedyny sposób powrotu — nie ma przycisku ani panoramowania.
+      const base = baseView();
+      if (Math.abs(nextScale - base.scale) < 0.06 * base.scale) {
+        viewRef.current = base;
       } else {
         const drawingX = (screenX - current.offsetX) / current.scale;
         const drawingY = (screenY - current.offsetY) / current.scale;
@@ -273,7 +300,7 @@ export function useCanvas({
       onViewChange?.(viewRef.current);
       scheduleRedraw();
     },
-    [onViewChange, scheduleRedraw],
+    [baseView, onViewChange, scheduleRedraw],
   );
 
   useEffect(() => {
@@ -321,10 +348,18 @@ export function useCanvas({
     canvas.style.width = `${width}px`;
     canvas.style.height = `${height}px`;
     metricsRef.current = { width, height, dpr };
+    // Dopasowanie zależy od rozmiaru kadru, więc po zmianie trzeba je przeliczyć.
+    // Kasuje to przybliżenie kółkiem — i dobrze: po zmianie okna wzorzec ma znów
+    // wypełniać kadr. Tylko tam, gdzie jest co dopasowywać: edytor i tryb ze zdjęcia
+    // nie podają obrysu i zachowują przybliżenie przez zmianę rozmiaru, jak dotąd.
+    if (fitBoundsRef.current) {
+      viewRef.current = baseView();
+      onViewChange?.(viewRef.current);
+    }
     // Zmiana rozmiaru czyści bitmapy warstw — trzeba je odtworzyć z operacji.
     layersDirtyRef.current = true;
     redrawScene();
-  }, [redrawScene]);
+  }, [baseView, onViewChange, redrawScene]);
 
   const onPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLCanvasElement>) => {
@@ -504,6 +539,15 @@ export function useCanvas({
       }
     };
   }, [redrawScene, referenceStrokes]);
+
+  // Nowy wzorzec = nowy obrys do wpisania w kadr.
+  useEffect(() => {
+    fitBoundsRef.current = fitBounds;
+    viewRef.current = baseView();
+    onViewChange?.(viewRef.current);
+    layersDirtyRef.current = true;
+    scheduleRedraw();
+  }, [baseView, fitBounds, onViewChange, scheduleRedraw]);
 
   useEffect(() => {
     const container = containerRef.current;

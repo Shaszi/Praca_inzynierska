@@ -13,6 +13,16 @@ export type Profile = {
 
 export type PracticeMode = 'reference' | 'image'
 
+export type PracticeAttempt = {
+  stepIndex: number
+  score: number | null
+  /** Komentarz algorytmu. */
+  feedback: string | null
+  /** Komentarz modelu AI. */
+  aiFeedback: string | null
+  createdAt: string
+}
+
 export type PracticeSessionSummary = {
   id: string
   mode: PracticeMode
@@ -123,6 +133,9 @@ export const progressService = {
     feedback?: string | null
     metrics?: Record<string, unknown> | null
   }): Promise<void> {
+    // Jeden krok = jeden wiersz: powtórzona kreska zastępuje poprzednią próbę. Usunięcie
+    // przed wstawieniem, w jednym łańcuchu, bo równoległy DELETE zjadałby świeży wiersz.
+    await progressService.deleteAttempts(params.sessionId, params.stepIndex)
     const { error } = await supabase.from('practice_attempts').insert({
       session_id: params.sessionId,
       step_index: params.stepIndex,
@@ -133,6 +146,34 @@ export const progressService = {
       metrics: (params.metrics ?? null) as Json,
     })
     if (error) fail('Nie udało się zapisać próby', error)
+  },
+
+  /** Historia kroków jednej sesji — to z niej ekran postępu pokazuje, co model napisał. */
+  async getAttempts(sessionId: string): Promise<PracticeAttempt[]> {
+    const { data, error } = await supabase
+      .from('practice_attempts')
+      .select('step_index, score, feedback, ai_feedback, created_at')
+      .eq('session_id', sessionId)
+      .order('step_index')
+      .order('created_at')
+    if (error) fail('Nie udało się pobrać historii kroków', error)
+    return data.map((row) => ({
+      stepIndex: row.step_index,
+      score: row.score,
+      feedback: row.feedback,
+      aiFeedback: row.ai_feedback,
+      createdAt: row.created_at,
+    }))
+  },
+
+  /** Porzucona próba (powtórzenie kreski albo cofnięcie kroku) nie ma prawa zostać w historii. */
+  async deleteAttempts(sessionId: string, stepIndex: number): Promise<void> {
+    const { error } = await supabase
+      .from('practice_attempts')
+      .delete()
+      .eq('session_id', sessionId)
+      .eq('step_index', stepIndex)
+    if (error) fail('Nie udało się usunąć próby', error)
   },
 
   async completeSession(params: {

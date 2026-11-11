@@ -1,4 +1,5 @@
 import type { Point, ReferenceDrawing, Stroke } from '../../../types/drawing'
+import type { StorageResult } from '../services/storageTypes'
 
 const DEFAULT_BRUSH_SIZE = 5
 
@@ -90,23 +91,28 @@ export function normalizeReference(value: unknown): ReferenceDrawing | null {
   }
 }
 
-export function validateReference(value: unknown): value is ReferenceDrawing {
-  if (typeof value !== 'object' || value === null) {
-    return false
-  }
-
-  const reference = value as Partial<ReferenceDrawing>
-  return (
-    typeof reference.id === 'string' &&
-    reference.id.trim().length > 0 &&
-    typeof reference.name === 'string' &&
-    reference.name.trim().length > 0 &&
-    isFiniteNumber(reference.createdAt) &&
-    Array.isArray(reference.strokes) &&
-    reference.strokes.every((stroke) => isModernStroke(stroke))
-  )
-}
-
 export function isStrokeCollectionEmpty(strokes: Stroke[]): boolean {
   return strokes.length === 0 || strokes.every((stroke) => stroke.points.length === 0)
+}
+
+/**
+ * Parsowanie pliku JSON wrzuconego przez użytkownika — jedyna granica zaufania dla
+ * danych z dysku. Celowo używa `normalizeReference`, a nie samego type guarda: ona
+ * kopiuje po białej liście, więc obce pola z obcego pliku nie wchodzą do stanu aplikacji
+ * ani dalej do bazy. Przy okazji akceptuje stary format kresek jako gołe `Point[]`.
+ */
+export function parseImportedReference(jsonText: string): StorageResult<ReferenceDrawing | null> {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(jsonText)
+  } catch {
+    return { data: null, error: 'To nie jest poprawny plik JSON.' }
+  }
+
+  const reference = normalizeReference(parsed)
+  if (!reference) {
+    return { data: null, error: 'Plik nie wygląda jak wzorzec. Oczekuję pól id, name, strokes i createdAt.' }
+  }
+
+  return { data: reference, error: null }
 }

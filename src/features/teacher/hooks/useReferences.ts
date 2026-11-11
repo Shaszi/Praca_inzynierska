@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ReferenceDrawing, Stroke } from '../../../types/drawing'
 import { downloadJSON, sanitizeFileName } from '../../../utils/file'
-import { referenceService } from '../services/referenceService'
+import { referenceStorageService } from '../services/referenceStorageService'
+import { parseImportedReference } from '../utils/referenceValidation'
 import { isStrokeCollectionEmpty } from '../utils/referenceValidation'
 
 type UseReferencesResult = {
   references: ReferenceDrawing[]
   selectedReference: ReferenceDrawing | null
   selectedReferenceId: string
-  setSelectedReferenceId: (id: string) => void
   saveReference: (strokes: Stroke[], name: string) => Promise<boolean>
   loadReference: (id: string) => Stroke[] | null
   deleteReference: (id: string) => Promise<void>
@@ -33,7 +33,7 @@ export function useReferences(): UseReferencesResult {
 
   useEffect(() => {
     let cancelled = false
-    referenceService.loadReferences().then(({ data, error }) => {
+    referenceStorageService.loadReferences().then(({ data, error }) => {
       if (cancelled) return
       setReferences(data)
       setErrorMessage(error)
@@ -51,7 +51,7 @@ export function useReferences(): UseReferencesResult {
 
   const persistNewReference = useCallback(
     async (name: string, strokes: Stroke[]) => {
-      const { data: reference, error } = await referenceService.createReference(name, strokes, references)
+      const { data: reference, error } = await referenceStorageService.insertReference(name, strokes)
       if (error || !reference) {
         setErrorMessage(error ?? 'Nie udało się zapisać wzorca.')
         return null
@@ -86,7 +86,7 @@ export function useReferences(): UseReferencesResult {
     if (!target) return null
     setSelectedReferenceId(id)
     setStatusMessage(`Wczytano „${target.name}” na płótno.`)
-    return referenceService.cloneReferenceStrokes(target)
+    return referenceStorageService.cloneReferenceStrokes(target)
   }, [references])
 
   const deleteReference = useCallback(async (id: string) => {
@@ -94,7 +94,7 @@ export function useReferences(): UseReferencesResult {
     const target = references.find((reference) => reference.id === id)
     if (!target) return
 
-    const { error } = await referenceService.deleteReference(id)
+    const { error } = await referenceStorageService.deleteReference(id)
     if (error) return setErrorMessage(error)
 
     setReferences((current) => current.filter((reference) => reference.id !== id))
@@ -120,11 +120,11 @@ export function useReferences(): UseReferencesResult {
     setIsImporting(true)
 
     try {
-      const parsedResult = referenceService.parseImportedReference(await file.text())
-      if (parsedResult.error) return void setErrorMessage(parsedResult.error)
-      if (isStrokeCollectionEmpty(parsedResult.data.strokes)) return void setErrorMessage('Zaimportowany wzorzec nie zawiera kresek.')
+      const { data: imported, error } = parseImportedReference(await file.text())
+      if (!imported) return void setErrorMessage(error)
+      if (isStrokeCollectionEmpty(imported.strokes)) return void setErrorMessage('Zaimportowany wzorzec nie zawiera kresek.')
 
-      const reference = await persistNewReference(parsedResult.data.name, parsedResult.data.strokes)
+      const reference = await persistNewReference(imported.name, imported.strokes)
       if (reference) setStatusMessage(`Zaimportowano „${reference.name}”.`)
     } catch {
       setErrorMessage('Nie udało się odczytać pliku.')
@@ -137,7 +137,6 @@ export function useReferences(): UseReferencesResult {
     references,
     selectedReference,
     selectedReferenceId,
-    setSelectedReferenceId,
     saveReference,
     loadReference,
     deleteReference,

@@ -38,6 +38,8 @@ export function PracticeToolbar({
   onToggleLayers,
   onOpenBrush,
   isBrushOpen,
+  onStepBack,
+  canStepBack,
   onUndo,
   onRedo,
   onClear,
@@ -56,6 +58,9 @@ export function PracticeToolbar({
   onToggleLayers: () => void
   onOpenBrush: () => void
   isBrushOpen: boolean
+  /** Krok w tył wzorca — zdejmuje kreskę poprzedniego kroku do narysowania od nowa. */
+  onStepBack: () => void
+  canStepBack: boolean
   onUndo: () => void
   onRedo: () => void
   onClear: () => void
@@ -121,6 +126,15 @@ export function PracticeToolbar({
 
       {/* Projekt nie ma cofania w tym pasku, ale bez niego byłaby to regresja funkcji. */}
       <span className="flex items-center gap-1">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onStepBack}
+          disabled={!canStepBack}
+          title="Wróć do poprzedniej kreski wzorca"
+        >
+          Krok w tył
+        </Button>
         <Button variant="ghost" size="sm" onClick={onUndo} disabled={!canUndo} title="Cofnij (Ctrl+Z)">
           Cofnij
         </Button>

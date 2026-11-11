@@ -120,7 +120,7 @@ export function ImagePracticePage() {
     let feedback: string | null = null
     try {
       feedback = await analyzeStrokeAgainstImage(
-        [...strokes, stroke], imageBase64, mediaType, currentStep.title, currentStep.description,
+        strokes, stroke, imageBase64, mediaType, currentStep.title, currentStep.description,
       )
       setAiFeedback(feedback)
     } finally {

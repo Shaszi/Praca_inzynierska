@@ -66,6 +66,23 @@ export function useLayers() {
     [activeLayerId, set, state.present],
   )
 
+  /**
+   * Usuwa kreski oznaczone danym krokiem wzorca. Po numerze kroku, nie przez cofnięcie
+   * historii: na szczycie historii może stać wymazanie albo zmiana warstwy, a tożsamość
+   * obiektu nie przeżywa klonowania w historii.
+   */
+  const removeStrokesForStep = useCallback(
+    (stepIndex: number) => {
+      const next = state.present.map((layer) => ({
+        ...layer,
+        strokes: layer.strokes.filter((stroke) => stroke.stepIndex !== stepIndex),
+      }))
+      if (next.every((layer, i) => layer.strokes.length === state.present[i].strokes.length)) return
+      set(next)
+    },
+    [set, state.present],
+  )
+
   const addLayer = useCallback(() => {
     const used = new Set(state.present.map((layer) => layer.id))
     let index = state.present.length + 1
@@ -131,6 +148,7 @@ export function useLayers() {
     setActiveLayerId,
     flatStrokes,
     addStroke,
+    removeStrokesForStep,
     addLayer,
     removeLayer,
     moveLayer,

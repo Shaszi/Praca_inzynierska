@@ -2,7 +2,7 @@ import { useCallback, useRef, useState } from 'react'
 import type { PointerEvent as ReactPointerEvent } from 'react'
 import { useCanvas } from '../hooks/useCanvas'
 import type { GuideType, Layer, Point, SmoothingSettings, Stroke, Tool } from '../../../types/drawing'
-import { IDENTITY_VIEW, type CanvasView } from '../utils/canvasPoint'
+import { IDENTITY_VIEW, type Bounds, type CanvasView } from '../utils/canvasPoint'
 import { useCanvasColors } from '../utils/themeColors'
 import { CanvasOverlay } from './CanvasOverlay'
 import { CanvasRenderer } from './CanvasRenderer'
@@ -28,6 +28,8 @@ type DrawingCanvasProps = {
   backgroundImageUrl?: string
   /** Pozwala rodzicowi ustawić nakładki w układzie rysunku (np. marker błędu). */
   onViewChange?: (view: CanvasView) => void
+  /** Obrys, który ma wypełnić kadr. Bez niego płótno startuje 1:1. */
+  fitBounds?: Bounds | null
 }
 
 export function DrawingCanvas({
@@ -49,6 +51,7 @@ export function DrawingCanvas({
   referenceStrokeColor,
   backgroundImageUrl,
   onViewChange,
+  fitBounds = null,
 }: DrawingCanvasProps) {
   // Imperative cursor ref — no React state, zero re-renders on pointermove
   const cursorRef = useRef<HTMLDivElement>(null)
@@ -81,6 +84,7 @@ export function DrawingCanvas({
     userStrokeColor: userStrokeColor ?? colors.ink,
     referenceStrokeColor: referenceStrokeColor ?? colors.lineStrong,
     onViewChange: handleViewChange,
+    fitBounds,
   })
 
   const updateCursorPreview = useCallback(

@@ -14,6 +14,8 @@ type UsePracticeSessionResult = {
   recordAttempt: (attempt: Omit<Parameters<typeof progressService.recordAttempt>[0], 'sessionId'>) => void
   /** Oznacza rysunek jako ukończony — to on liczy się do dziennego celu. */
   complete: (finalStrokes: Stroke[]) => Promise<void>
+  /** Porzuca próbę danego kroku: usuwa wiersz z bazy i wycofuje jej wynik ze średniej. */
+  discardAttempt: (stepIndex: number) => void
   /** Porzuca bieżącą sesję (np. po zmianie wzorca lub wyczyszczeniu płótna). */
   reset: () => void
   saveError: string | null
@@ -25,7 +27,9 @@ type UsePracticeSessionResult = {
  */
 export function usePracticeSession(params: SessionParams | null): UsePracticeSessionResult {
   const sessionIdRef = useRef<Promise<string> | null>(null)
-  const scoresRef = useRef<number[]>([])
+  // Po kroku, nie lista: powtórzenie kreski nadpisuje swój wynik, zamiast dopisywać
+  // kolejny i zawyżać średnią sesji.
+  const scoresRef = useRef<Map<number, number>>(new Map())
   const [saveError, setSaveError] = useState<string | null>(null)
 
   const paramsRef = useRef(params)
@@ -54,7 +58,7 @@ export function usePracticeSession(params: SessionParams | null): UsePracticeSes
     (attempt) => {
       const session = ensureSession()
       if (!session) return
-      if (attempt.score !== null) scoresRef.current.push(attempt.score)
+      if (attempt.score !== null) scoresRef.current.set(attempt.stepIndex, attempt.score)
       session
         .then((sessionId) => progressService.recordAttempt({ sessionId, ...attempt }))
         .then(() => setSaveError(null))
@@ -63,9 +67,20 @@ export function usePracticeSession(params: SessionParams | null): UsePracticeSes
     [ensureSession, report],
   )
 
+  const discardAttempt = useCallback<UsePracticeSessionResult['discardAttempt']>(
+    (stepIndex) => {
+      scoresRef.current.delete(stepIndex)
+      // Sesja jeszcze nie istnieje = nie ma czego usuwać.
+      sessionIdRef.current
+        ?.then((sessionId) => progressService.deleteAttempts(sessionId, stepIndex))
+        .catch(report)
+    },
+    [report],
+  )
+
   const reset = useCallback(() => {
     sessionIdRef.current = null
-    scoresRef.current = []
+    scoresRef.current = new Map()
   }, [])
 
   const complete = useCallback(
@@ -73,7 +88,7 @@ export function usePracticeSession(params: SessionParams | null): UsePracticeSes
       const session = ensureSession()
       const current = paramsRef.current
       if (!session || !current) return
-      const scores = scoresRef.current
+      const scores = [...scoresRef.current.values()]
       const averageScore = scores.length
         ? Math.round((scores.reduce((sum, score) => sum + score, 0) / scores.length) * 100) / 100
         : null
@@ -94,5 +109,5 @@ export function usePracticeSession(params: SessionParams | null): UsePracticeSes
     [ensureSession, report, reset],
   )
 
-  return { recordAttempt, complete, reset, saveError }
+  return { recordAttempt, discardAttempt, complete, reset, saveError }
 }

@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { BrandMark } from '../../components/BrandMark'
 import { SketchIllustration } from '../../components/SketchIllustration'
 import { useAuth } from './authContext'
+import { safeRedirect } from './safeRedirect'
 
 type Mode = 'login' | 'signup'
 
@@ -28,7 +29,7 @@ export function AuthPage({ mode }: { mode: Mode }) {
   const { user } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
-  const redirectTo = (location.state as { from?: string } | null)?.from ?? '/app'
+  const redirectTo = safeRedirect((location.state as { from?: string } | null)?.from)
 
   const [displayName, setDisplayName] = useState('')
   const [email, setEmail] = useState('')

@@ -1,6 +1,7 @@
 import type { ComponentType, SVGProps } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
 import { useAuth } from '../features/auth/authContext'
+import { roleLabel, type Role } from '../features/auth/rolesService'
 import { useProgress } from '../features/progress/hooks/useProgress'
 import { BrandMark } from './BrandMark'
 import { ChartIcon, HomeIcon, ImageIcon, LayersIcon, LogOutIcon, PencilIcon } from './icons'
@@ -17,7 +18,8 @@ type NavItem = {
 const navItems: NavItem[] = [
   { to: '/app', label: 'Start', shortLabel: 'Start', icon: HomeIcon, end: true },
   { to: '/app/practice', label: 'Ćwicz', shortLabel: 'Ćwicz', icon: PencilIcon, end: true },
-  { to: '/app/references', label: 'Wzorce', shortLabel: 'Wzorce', icon: LayersIcon },
+  { to: '/app/library', label: 'Biblioteka', shortLabel: 'Biblioteka', icon: LayersIcon },
+  { to: '/app/references', label: 'Moje wzorce', shortLabel: 'Edytor', icon: PencilIcon },
   { to: '/app/practice/image', label: 'Ze zdjęcia', shortLabel: 'Zdjęcie', icon: ImageIcon },
   { to: '/app/progress', label: 'Postęp', shortLabel: 'Postęp', icon: ChartIcon },
 ]
@@ -34,7 +36,14 @@ function userLabel(user: ReturnType<typeof useAuth>['user']): string {
 }
 
 export function AppShell() {
-  const { user, signOut } = useAuth()
+  const { user, signOut, roles, hasRole } = useAuth()
+
+  // Trasy ról dokładamy do nawigacji dopiero, gdy rola jest znana.
+  const items: NavItem[] = [
+    ...navItems,
+    ...(hasRole('moderator') ? [{ to: '/app/moderation', label: 'Moderacja', shortLabel: 'Moderacja', icon: ChartIcon }] : []),
+    ...(hasRole('admin') ? [{ to: '/app/admin', label: 'Panel', shortLabel: 'Panel', icon: HomeIcon }] : []),
+  ]
   const name = userLabel(user)
 
   return (
@@ -46,7 +55,7 @@ export function AppShell() {
           className="hidden flex-wrap gap-1 md:flex"
           aria-label="Nawigacja główna"
         >
-          {navItems.map(({ to, label, icon: ItemIcon, end }) => (
+          {items.map(({ to, label, icon: ItemIcon, end }) => (
             <NavLink
               key={to}
               to={to}
@@ -66,6 +75,7 @@ export function AppShell() {
 
         <div className="flex items-center gap-2.5">
           <StreakChip />
+          <RoleBadge roles={roles} />
           <span
             className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-cyan text-sm font-bold text-on-accent"
             title={name}
@@ -94,7 +104,7 @@ export function AppShell() {
         className="fixed inset-x-0 bottom-0 z-40 flex border-t border-line bg-surface md:hidden"
         aria-label="Nawigacja główna"
       >
-        {navItems.map(({ to, shortLabel, icon: ItemIcon, end }) => (
+        {items.map(({ to, shortLabel, icon: ItemIcon, end }) => (
           <NavLink
             key={to}
             to={to}
@@ -134,6 +144,28 @@ function StreakChip() {
         />
       </svg>
       <span className="font-mono">{streaks.current}</span>
+    </span>
+  )
+}
+
+/**
+ * Rola użytkownika w nagłówku. Administrator na cytrynowo, moderator na fioletowo,
+ * zwykły użytkownik na spokojnie — kolor niesie hierarchię bez czytania napisu.
+ */
+function RoleBadge({ roles }: { roles: Role[] }) {
+  const label = roleLabel(roles)
+  const tone = roles.includes('admin')
+    ? 'bg-accent text-on-accent'
+    : roles.includes('moderator')
+      ? 'bg-violet text-on-accent'
+      : 'bg-surface-dim text-ink-faint'
+
+  return (
+    <span
+      className={`hidden min-h-[34px] items-center rounded-full px-3.5 text-[13px] font-bold sm:inline-flex ${tone}`}
+      title={`Twoja rola: ${label}`}
+    >
+      {label}
     </span>
   )
 }

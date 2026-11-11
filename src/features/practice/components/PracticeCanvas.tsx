@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { Layer, Point, SmoothingSettings, Stroke, Tool } from '../../../types/drawing'
 import { DrawingCanvas } from '../../canvas/components/DrawingCanvas'
-import { IDENTITY_VIEW, type CanvasView } from '../../canvas/utils/canvasPoint'
+import { IDENTITY_VIEW, type Bounds, type CanvasView } from '../../canvas/utils/canvasPoint'
 import { useCanvasColors } from '../../canvas/utils/themeColors'
 
 type PracticeCanvasProps = {
@@ -21,6 +21,8 @@ type PracticeCanvasProps = {
   onEraseEnd?: () => void
   /** Miejsce największego błędu ostatniej kreski (współrzędne płótna). */
   errorMarker?: { x: number; y: number } | null
+  /** Obrys całego wzorca — płótno wpisuje go w kadr. */
+  fitBounds?: Bounds | null
 }
 
 export function PracticeCanvas({
@@ -39,6 +41,7 @@ export function PracticeCanvas({
   onEraseAtPoint,
   onEraseEnd,
   errorMarker = null,
+  fitBounds = null,
 }: PracticeCanvasProps) {
   const [view, setView] = useState<CanvasView>(IDENTITY_VIEW)
   const colors = useCanvasColors()
@@ -65,6 +68,7 @@ export function PracticeCanvas({
         // Akcent, nie bladofiolet: to kreska, którą użytkownik ma narysować TERAZ.
         referenceStrokeColor={colors.violet}
         onViewChange={setView}
+        fitBounds={fitBounds}
       />
       {errorMarker && (
         <span

@@ -1,4 +1,5 @@
 import { coverageWords } from '../features/practice/utils/coverageWords'
+import type { StrokeComment } from '../services/aiStrokeAnalysis'
 import type { Level, LiveProgress, StrokeEvaluation } from '../features/practice/utils/strokeEvaluation'
 import { Ring } from './Ring'
 import { Button, TypingDots } from './ui'
@@ -15,6 +16,10 @@ type FeedbackPanelProps = {
   onNextStroke?: () => void
   onRetry?: () => void
   emptyText?: string
+  /** Komentarz modelu do tej kreski. Algorytm mówi co, model — dlaczego i jak poprawić. */
+  comment?: StrokeComment | null
+  isCommentPending?: boolean
+  commentError?: string | null
 }
 
 const TONE: Record<Level, { ring: string; verdict: string }> = {
@@ -91,6 +96,9 @@ export function FeedbackPanel({
   onNextStroke,
   onRetry,
   emptyText = 'Narysuj kreskę po wskazanej linii, a pojawi się tu ocena.',
+  comment = null,
+  isCommentPending = false,
+  commentError = null,
 }: FeedbackPanelProps) {
   // 1. Prowadzisz kreskę — pierścień rośnie razem z pokryciem wzoru.
   if (live) {
@@ -186,6 +194,8 @@ export function FeedbackPanel({
         </p>
       )}
 
+      <AiComment comment={comment} isPending={isCommentPending} error={commentError} />
+
       {(canProceed || canRetry) && (
         <div className="flex flex-nowrap gap-2">
           {canProceed && onNextStroke && (
@@ -201,5 +211,41 @@ export function FeedbackPanel({
         </div>
       )}
     </Shell>
+  )
+}
+
+/** Miejsce na odpowiedź modelu — pod oceną algorytmu, żeby było jasne, co skąd pochodzi. */
+function AiComment({
+  comment,
+  isPending,
+  error,
+}: {
+  comment: StrokeComment | null
+  isPending: boolean
+  error: string | null
+}) {
+  if (!isPending && !comment && !error) return null
+
+  return (
+    <section
+      className="check-in m-0 flex flex-col gap-1.5 rounded-[16px] border border-accent/30 bg-accent-soft px-3.5 py-3"
+      style={{ animationDelay: '400ms' }}
+      aria-live="polite"
+    >
+      <h4 className="m-0 flex items-center gap-2 text-[12.5px] font-bold tracking-[0.08em] text-accent uppercase">
+        Komentarz AI
+        {isPending && <TypingDots />}
+      </h4>
+      {isPending && <p className="m-0 text-[14.5px] text-ink-faint">Model czyta pomiary tej kreski…</p>}
+      {error && !isPending && <p className="m-0 text-[14.5px] text-ink-faint">{error}</p>}
+      {comment && !isPending && (
+        <>
+          <p className="m-0 text-[14.5px] text-ink-soft">{comment.mistake}</p>
+          <p className="m-0 text-[14.5px] text-ink-soft">
+            <b className="text-accent">Następny raz:</b> {comment.fix}
+          </p>
+        </>
+      )}
+    </section>
   )
 }

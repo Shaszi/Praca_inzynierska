@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { fitStrokesToSquare } from './aiImageGuide'
+import { fitStrokesToSquare, guideStrokesFromNormalized } from './aiImageGuide'
 import type { Stroke } from '../types/drawing'
 
 const stroke = (points: [number, number][]): Stroke => ({
@@ -57,5 +57,42 @@ describe('fitStrokesToSquare', () => {
     const point = place(view, 300, 300)
     expect(point.x).toBeGreaterThanOrEqual(0)
     expect(point.x).toBeLessThanOrEqual(512)
+  })
+})
+
+describe('guideStrokesFromNormalized', () => {
+  const line = (points: [number, number][]) => ({ points: points.map(([x, y]) => ({ x, y })) })
+
+  it('skaluje ułamki do pikseli zdjęcia', () => {
+    const [guide] = guideStrokesFromNormalized([line([[0, 0], [0.5, 0.25], [1, 1]])], 800, 400)
+    expect(guide.points.map((p) => [p.x, p.y])).toEqual([
+      [0, 0],
+      [400, 100],
+      [800, 400],
+    ])
+  })
+
+  // Współrzędne pochodzą z modelu, więc są danymi z zewnątrz, nie obietnicą.
+  it('przycina punkty wychodzące poza kadr', () => {
+    const [guide] = guideStrokesFromNormalized([line([[-0.3, 1.8], [2, -1]])], 100, 100)
+    expect(guide.points.map((p) => [p.x, p.y])).toEqual([
+      [0, 100],
+      [100, 0],
+    ])
+  })
+
+  it('wyrzuca punkty, które nie są liczbami', () => {
+    const broken = { points: [{ x: 0.1, y: 0.1 }, { x: NaN, y: 0.5 }, { x: 0.9, y: 0.9 }] }
+    const [guide] = guideStrokesFromNormalized([broken], 200, 200)
+    expect(guide.points).toHaveLength(2)
+  })
+
+  it('pomija linię, z której został jeden punkt albo zero', () => {
+    expect(guideStrokesFromNormalized([line([[0.5, 0.5]])], 100, 100)).toEqual([])
+    expect(guideStrokesFromNormalized([line([])], 100, 100)).toEqual([])
+  })
+
+  it('bez linii od modelu zwraca pustą listę zamiast rzucać', () => {
+    expect(guideStrokesFromNormalized(undefined, 100, 100)).toEqual([])
   })
 })

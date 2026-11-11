@@ -34,12 +34,13 @@ export function PracticeToolbar({
   title,
   stepIndex,
   stepsTotal,
-  isLayersOpen,
+  isLayersOpen = false,
   onToggleLayers,
   onOpenBrush,
   isBrushOpen,
   onStepBack,
-  canStepBack,
+  canStepBack = false,
+  stepNoun = 'Kreska',
   onUndo,
   onRedo,
   onClear,
@@ -54,13 +55,16 @@ export function PracticeToolbar({
   /** Numer kroku liczony od zera. */
   stepIndex: number
   stepsTotal: number
-  isLayersOpen: boolean
-  onToggleLayers: () => void
+  /** Warstwy są opcjonalne: tryb ze zdjęcia rysuje na jednej i przycisk by kłamał. */
+  isLayersOpen?: boolean
+  onToggleLayers?: () => void
   onOpenBrush: () => void
   isBrushOpen: boolean
   /** Krok w tył wzorca — zdejmuje kreskę poprzedniego kroku do narysowania od nowa. */
-  onStepBack: () => void
-  canStepBack: boolean
+  onStepBack?: () => void
+  canStepBack?: boolean
+  /** Czym jest jeden krok: kreską wzorca albo krokiem planu ze zdjęcia. */
+  stepNoun?: string
   onUndo: () => void
   onRedo: () => void
   onClear: () => void
@@ -80,7 +84,7 @@ export function PracticeToolbar({
       {stepsTotal > 0 && (
         <>
           <span className="font-mono text-sm text-ink-faint">
-            Kreska {current + 1} z {stepsTotal}
+            {stepNoun} {current + 1} z {stepsTotal}
           </span>
           {stepsTotal <= 24 && (
             <span className="flex items-center gap-1" aria-hidden>
@@ -114,10 +118,12 @@ export function PracticeToolbar({
         Kolor
       </Button>
 
-      <Button variant="ghost" size="sm" onClick={onToggleLayers} aria-pressed={isLayersOpen}>
-        <LayersIcon />
-        Warstwy
-      </Button>
+      {onToggleLayers && (
+        <Button variant="ghost" size="sm" onClick={onToggleLayers} aria-pressed={isLayersOpen}>
+          <LayersIcon />
+          Warstwy
+        </Button>
+      )}
 
       <Button variant="ghost" size="sm" onClick={onToggleFullscreen} aria-pressed={isFullscreen}>
         <ExpandIcon collapsed={isFullscreen} />
@@ -126,15 +132,17 @@ export function PracticeToolbar({
 
       {/* Projekt nie ma cofania w tym pasku, ale bez niego byłaby to regresja funkcji. */}
       <span className="flex items-center gap-1">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onStepBack}
-          disabled={!canStepBack}
-          title="Wróć do poprzedniej kreski wzorca"
-        >
-          Krok w tył
-        </Button>
+        {onStepBack && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onStepBack}
+            disabled={!canStepBack}
+            title="Wróć do poprzedniej kreski wzorca"
+          >
+            Krok w tył
+          </Button>
+        )}
         <Button variant="ghost" size="sm" onClick={onUndo} disabled={!canUndo} title="Cofnij (Ctrl+Z)">
           Cofnij
         </Button>

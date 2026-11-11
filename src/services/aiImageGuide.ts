@@ -7,6 +7,38 @@ export type ImageGuideStep = {
   id: string
   title: string
   description: string
+  /** Linie pomocnicze tego kroku, już we współrzędnych zdjęcia (piksele). */
+  strokes: Stroke[]
+}
+
+/** Punkt z modelu: ułamek szerokości i wysokości zdjęcia. */
+type NormalizedPoint = { x: number; y: number }
+
+const GUIDE_BRUSH_SIZE = 6
+
+/**
+ * Model podaje linie w ułamkach rozmiaru zdjęcia (0–1), bo nie zna rozdzielczości pliku.
+ * Tutaj skalujemy je do pikseli zdjęcia — tego samego układu, w którym płótno rysuje
+ * tło i zapisuje kreski użytkownika, więc wszystko leży na sobie.
+ */
+export function guideStrokesFromNormalized(
+  strokes: { points: NormalizedPoint[] }[] | undefined,
+  imageWidth: number,
+  imageHeight: number,
+): Stroke[] {
+  if (!strokes) return []
+  return strokes
+    .map((stroke) => ({
+      brushSize: GUIDE_BRUSH_SIZE,
+      points: (stroke.points ?? [])
+        .filter((point) => Number.isFinite(point?.x) && Number.isFinite(point?.y))
+        .map((point) => ({
+          x: Math.min(1, Math.max(0, point.x)) * imageWidth,
+          y: Math.min(1, Math.max(0, point.y)) * imageHeight,
+          timestamp: 0,
+        })),
+    }))
+    .filter((stroke) => stroke.points.length >= 2)
 }
 
 export type SupportedMediaType = 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif'
@@ -15,12 +47,31 @@ export type SupportedMediaType = 'image/jpeg' | 'image/png' | 'image/webp' | 'im
 export async function generateImageSteps(
   imageBase64: string,
   mediaType: SupportedMediaType,
+  imageWidth: number,
+  imageHeight: number,
 ): Promise<ImageGuideStep[]> {
-  const { steps } = await invokeAi<{ steps: { title: string; description: string }[] }>({
+  const { steps } = await invokeAi<{
+    steps: { title: string; description: string; strokes?: { points: NormalizedPoint[] }[] }[]
+  }>({
     action: 'image-steps',
     image: { data: imageBase64, mediaType },
   })
-  return steps.map((step, i) => ({ id: `step-${i}`, title: step.title, description: step.description }))
+  return steps.map((step, i) => ({
+    id: `step-${i}`,
+    title: step.title,
+    description: step.description,
+    strokes: guideStrokesFromNormalized(step.strokes, imageWidth, imageHeight),
+  }))
+}
+
+/** Rozmiar własny pliku — w tych pikselach liczymy linie pomocnicze i rysujemy tło. */
+export function readImageSize(url: string): Promise<{ width: number; height: number }> {
+  return new Promise((resolve, reject) => {
+    const image = new Image()
+    image.onload = () => resolve({ width: image.naturalWidth, height: image.naturalHeight })
+    image.onerror = () => reject(new Error('Nie udało się odczytać rozmiaru zdjęcia.'))
+    image.src = url
+  })
 }
 
 const SIZE = 512

@@ -20,6 +20,13 @@ type FeedbackPanelProps = {
   comment?: StrokeComment | null
   isCommentPending?: boolean
   commentError?: string | null
+  /**
+   * Komentarz jako jeden tekst. Tryb ze zdjęcia dostaje od modelu zdanie, nie parę
+   * (błąd, poprawka) — model ocenia tam obrazek, nie gotowe pomiary.
+   */
+  commentText?: string | null
+  /** Napis na przycisku dalej. Tryb ze zdjęcia idzie krokami planu, nie kreskami wzorca. */
+  nextLabel?: string
 }
 
 const TONE: Record<Level, { ring: string; verdict: string }> = {
@@ -99,6 +106,8 @@ export function FeedbackPanel({
   comment = null,
   isCommentPending = false,
   commentError = null,
+  commentText = null,
+  nextLabel = 'Następna kreska',
 }: FeedbackPanelProps) {
   // 1. Prowadzisz kreskę — pierścień rośnie razem z pokryciem wzoru.
   if (live) {
@@ -194,13 +203,13 @@ export function FeedbackPanel({
         </p>
       )}
 
-      <AiComment comment={comment} isPending={isCommentPending} error={commentError} />
+      <AiComment comment={comment} text={commentText} isPending={isCommentPending} error={commentError} />
 
       {(canProceed || canRetry) && (
         <div className="flex flex-nowrap gap-2">
           {canProceed && onNextStroke && (
             <Button variant="primary" size="sm" className="flex-1" onClick={onNextStroke}>
-              {isLastStroke ? 'Zakończ' : 'Następna kreska'}
+              {isLastStroke ? 'Zakończ' : nextLabel}
             </Button>
           )}
           {canRetry && onRetry && (
@@ -217,14 +226,16 @@ export function FeedbackPanel({
 /** Miejsce na odpowiedź modelu — pod oceną algorytmu, żeby było jasne, co skąd pochodzi. */
 function AiComment({
   comment,
+  text = null,
   isPending,
   error,
 }: {
   comment: StrokeComment | null
+  text?: string | null
   isPending: boolean
   error: string | null
 }) {
-  if (!isPending && !comment && !error) return null
+  if (!isPending && !comment && !text && !error) return null
 
   return (
     <section
@@ -238,6 +249,7 @@ function AiComment({
       </h4>
       {isPending && <p className="m-0 text-[14.5px] text-ink-faint">Model czyta pomiary tej kreski…</p>}
       {error && !isPending && <p className="m-0 text-[14.5px] text-ink-faint">{error}</p>}
+      {text && !isPending && <p className="m-0 text-[14.5px] text-ink-soft">{text}</p>}
       {comment && !isPending && (
         <>
           <p className="m-0 text-[14.5px] text-ink-soft">{comment.mistake}</p>

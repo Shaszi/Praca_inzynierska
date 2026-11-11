@@ -30,6 +30,13 @@ type DrawingCanvasProps = {
   onViewChange?: (view: CanvasView) => void
   /** Obrys, który ma wypełnić kadr. Bez niego płótno startuje 1:1. */
   fitBounds?: Bounds | null
+  /**
+   * Własny rozmiar zdjęcia tła w jednostkach rysunku. Podany — zdjęcie zajmuje prostokąt
+   * od (0,0) do (width,height) układu rysunku, więc leży dokładnie tam, gdzie linie
+   * pomocnicze liczone w pikselach zdjęcia. Bez niego zdjęcie wypełnia kadr przez
+   * `object-contain` i z niczym się nie pokrywa.
+   */
+  backgroundImageSize?: { width: number; height: number } | null
 }
 
 export function DrawingCanvas({
@@ -52,6 +59,7 @@ export function DrawingCanvas({
   backgroundImageUrl,
   onViewChange,
   fitBounds = null,
+  backgroundImageSize = null,
 }: DrawingCanvasProps) {
   // Imperative cursor ref — no React state, zero re-renders on pointermove
   const cursorRef = useRef<HTMLDivElement>(null)
@@ -144,7 +152,8 @@ export function DrawingCanvas({
           <img
             src={backgroundImageUrl}
             alt=""
-            className="h-full w-full select-none object-contain opacity-20"
+            className={`select-none opacity-20 ${backgroundImageSize ? '' : 'h-full w-full object-contain'}`}
+            style={backgroundImageSize ?? undefined}
             draggable={false}
           />
         </div>

@@ -1,8 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowRightIcon, ImageIcon } from '../components/icons'
-import { ControlBar } from '../components/ControlBar'
-import { Button, PageHeader, Spinner, TypingDots } from '../components/ui'
+import { ImageIcon } from '../components/icons'
+import { Button, PageHeader, Spinner } from '../components/ui'
+import { BrushPanel } from '../features/canvas/components/BrushPanel'
+import { useBrushSettings } from '../features/canvas/hooks/useBrushSettings'
+import { useCanvasColors } from '../features/canvas/utils/themeColors'
+import { PracticeToolbar } from '../features/practice/components/PracticeToolbar'
+import { StrokeMeter } from '../features/practice/components/StrokeMeter'
+import { usePracticeAnalysis } from '../features/practice/hooks/usePracticeAnalysis'
+import { FeedbackPanel } from '../components/FeedbackPanel'
 import { DrawingCanvas } from '../features/canvas/components/DrawingCanvas'
 import { useSmoothingSettings } from '../features/canvas/hooks/useSmoothingSettings'
 import { StrokeThumbnail } from '../features/progress/components/StrokeThumbnail'
@@ -12,6 +18,7 @@ import { useStrokes } from '../hooks/useStrokes'
 import {
   analyzeStrokeAgainstImage,
   generateImageSteps,
+  readImageSize,
   type ImageGuideStep,
   type SupportedMediaType,
 } from '../services/aiImageGuide'
@@ -45,10 +52,16 @@ export function ImagePracticePage() {
   const [analyzeError, setAnalyzeError] = useState<string | null>(null)
   const [isDragging, setIsDragging] = useState(false)
   const [imageName, setImageName] = useState('')
+  // Rozmiar własny zdjęcia: w tych pikselach model podaje linie, w nich rysujemy tło.
+  const [imageSize, setImageSize] = useState<{ width: number; height: number } | null>(null)
 
-  const [brushSize, setBrushSize] = useState(5)
+  // Te same ustawienia pędzla co w ćwiczeniu z wzorcem — jeden hook, jeden zapis.
+  const { brush, setBrush } = useBrushSettings()
+  const [isBrushOpen, setIsBrushOpen] = useState(false)
+  const [isFullscreen, setIsFullscreen] = useState(false)
   const [tool, setTool] = useState<Tool>('brush')
-  const { smoothing, setSmoothing } = useSmoothingSettings()
+  const { smoothing } = useSmoothingSettings()
+  const colors = useCanvasColors()
   const [isAnalyzingAI, setIsAnalyzingAI] = useState(false)
   const [aiFeedback, setAiFeedback] = useState<string | null>(null)
   const [awaitingNext, setAwaitingNext] = useState(false)
@@ -79,11 +92,14 @@ export function ImagePracticePage() {
     setPhase('analyzing')
     try {
       const { base64, mediaType: mt } = await readFileAsBase64(file)
-      setImageUrl(URL.createObjectURL(file))
+      const url = URL.createObjectURL(file)
+      const size = await readImageSize(url)
+      setImageUrl(url)
+      setImageSize(size)
       setImageBase64(base64)
       setMediaType(mt)
       setImageName(file.name.replace(/\.[^.]+$/, ''))
-      const generatedSteps = await generateImageSteps(base64, mt)
+      const generatedSteps = await generateImageSteps(base64, mt, size.width, size.height)
       setSteps(generatedSteps)
       setStepIndex(0)
       setPhase('practicing')
@@ -105,15 +121,23 @@ export function ImagePracticePage() {
   const handleDragLeave = useCallback(() => setIsDragging(false), [])
 
   const currentStep = steps[stepIndex] ?? null
+  // shortcut: pasek i kółko mierzą pierwszą linię kroku, nie wszystkie naraz.
+  // Większość kroków ma jedną; przy kilku podnieść, gdy ocena ma objąć cały krok.
+  const guideStroke = currentStep?.strokes[0] ?? null
+  const { evaluation, live, analyzeActiveStroke, evaluateCompletedStroke, resetAnalysis } =
+    usePracticeAnalysis(guideStroke)
 
   const handleEraseAtPoint = useCallback(
-    (point: Point) => { eraseInSession((prev) => eraseAtPoint(prev, point.x, point.y, brushSize)) },
-    [brushSize, eraseInSession],
+    (point: Point) => { eraseInSession((prev) => eraseAtPoint(prev, point.x, point.y, brush.width)) },
+    [brush.width, eraseInSession],
   )
 
-  const handleStrokeComplete = useCallback(async (stroke: Stroke) => {
+  const handleStrokeComplete = useCallback(async (stroke: Stroke, rawPoints: Point[]) => {
     addStroke(stroke)
     if (!currentStep) return
+    // Ocena lokalna liczy się natychmiast z linii pomocniczej kroku; komentarz modelu
+    // dochodzi chwilę później, tak samo jak w ćwiczeniu z wzorcem.
+    const result = evaluateCompletedStroke(stroke, rawPoints)
     setIsAnalyzingAI(true)
     setAiFeedback(null)
     setAwaitingNext(false)
@@ -126,20 +150,27 @@ export function ImagePracticePage() {
     } finally {
       setIsAnalyzingAI(false)
       setAwaitingNext(true)
-      recordAttempt({ stepIndex, stroke, score: null, aiFeedback: feedback })
+      recordAttempt({
+        stepIndex,
+        stroke,
+        score: result && !result.tooShort ? result.score : null,
+        feedback: result && !result.tooShort ? result.summary : null,
+        aiFeedback: feedback,
+      })
     }
-  }, [addStroke, currentStep, strokes, imageBase64, mediaType, recordAttempt, stepIndex])
+  }, [addStroke, currentStep, evaluateCompletedStroke, strokes, imageBase64, mediaType, recordAttempt, stepIndex])
 
   const handleNextStep = useCallback(() => {
     if (stepIndex >= steps.length - 1) { setPhase('done'); completeSession(strokes); return }
     setStepIndex((i) => i + 1)
     setAiFeedback(null)
     setAwaitingNext(false)
-  }, [stepIndex, steps.length, completeSession, strokes])
+    resetAnalysis()
+  }, [stepIndex, steps.length, completeSession, resetAnalysis, strokes])
 
   const handleRetry = useCallback(() => {
-    undoStroke(); setAiFeedback(null); setAwaitingNext(false); setIsAnalyzingAI(false)
-  }, [undoStroke])
+    undoStroke(); setAiFeedback(null); setAwaitingNext(false); setIsAnalyzingAI(false); resetAnalysis()
+  }, [resetAnalysis, undoStroke])
 
   const handleUndo = useCallback(() => {
     undoStroke(); setAiFeedback(null); setAwaitingNext(false)
@@ -150,7 +181,7 @@ export function ImagePracticePage() {
   }, [clearStrokes, resetSession])
 
   const resetAll = useCallback(() => {
-    setPhase('upload'); setImageUrl(null); setImageBase64(''); setSteps([])
+    setPhase('upload'); setImageUrl(null); setImageBase64(''); setSteps([]); setImageSize(null)
     clearStrokes(); setAiFeedback(null); setAwaitingNext(false); setStepIndex(0); resetSession()
   }, [clearStrokes, resetSession])
 
@@ -166,8 +197,6 @@ export function ImagePracticePage() {
   }, [canUndo, canRedo, handleUndo, redoStroke])
 
   // Shared wrapper — full-height card holding the canvas and floating panels
-  const fullArea = 'relative flex min-h-[600px] flex-1 overflow-hidden rounded-[22px] border border-line bg-surface'
-
   // --- Upload phase ---
   if (phase === 'upload') {
     return (
@@ -255,55 +284,102 @@ export function ImagePracticePage() {
   const canProceed = awaitingNext && !isAnalyzingAI
   const canRetry = awaitingNext && !isAnalyzingAI && canUndo
   const isLastStep = stepIndex >= steps.length - 1
-  const floating =
-    'rounded-full border border-line bg-surface/[0.88] shadow-[var(--shadow-float)] backdrop-blur-[10px]'
 
   return (
-    <section className={fullArea}>
-      {/* Canvas fills entire area via absolute positioning */}
-      <div className="absolute inset-0 [&>div]:rounded-none [&>div]:border-0">
-        <DrawingCanvas
-          layers={canvasLayers}
-          brushSize={brushSize}
-          tool={tool}
-          smoothing={smoothing}
-          onStrokeComplete={handleStrokeComplete}
-          onEraseStart={beginEraseSession}
-          onEraseAtPoint={handleEraseAtPoint}
-          onEraseEnd={endEraseSession}
-          showCursorPreview
-          backgroundImageUrl={imageUrl ?? undefined}
-        />
-      </div>
+    <section className="flex min-h-0 w-full flex-1 flex-col gap-4">
+      <PageHeader
+        title="Rysunek ze zdjęcia"
+        description="Poprowadź rękę po podświetlonej linii — to krok z planu, który AI zrobiło z Twojego zdjęcia."
+      >
+        {imageUrl && (
+          <img src={imageUrl} alt="Zdjęcie wzorcowe" className="h-10 w-10 rounded-[12px] object-cover" />
+        )}
+        <Button variant="ghost" size="sm" onClick={resetAll}>
+          Zmień zdjęcie
+        </Button>
+      </PageHeader>
 
-      {/* TOP: toolbar + step progress */}
-      <div className="pointer-events-none absolute inset-x-4 top-4 z-10 flex flex-wrap items-start justify-between gap-2">
-        <ControlBar
-          className="pointer-events-auto"
-          chromeClassName={`px-2.5 py-2 ${floating}`}
-          brushSize={brushSize}
-          onBrushSizeChange={setBrushSize}
-          minBrushSize={2}
-          maxBrushSize={30}
-          tool={tool}
-          onToolChange={setTool}
-          smoothing={smoothing}
-          onSmoothingChange={setSmoothing}
-          onUndo={handleUndo}
-          onRedo={redoStroke}
-          onClear={handleClear}
-          canUndo={canUndo}
-          canRedo={canRedo}
-          extraControls={
-            <Button variant="ghost" size="sm" onClick={resetAll}>Zmień zdjęcie</Button>
-          }
-        />
+      {saveError && (
+        <p className="rounded-[16px] bg-danger-soft px-3.5 py-3 text-sm font-medium text-danger">{saveError}</p>
+      )}
 
-        <div className={`pointer-events-auto flex items-center gap-3 px-2.5 py-2 ${floating}`}>
-          {imageUrl && <img src={imageUrl} alt="Zdjęcie wzorcowe" className="h-9 w-9 rounded-[12px] object-cover" />}
-          <div className="min-w-0">
-            <p className="font-mono text-xs uppercase tracking-[0.04em] text-ink-faint">Krok {stepIndex + 1} z {steps.length}</p>
-            <div className="mt-1 flex gap-[3px]">
+      {/* Ten sam układ co w ćwiczeniu z wzorcem: kanwa bierze resztę, ocena siedzi w szynie 340 px. */}
+      <div
+        className={
+          isFullscreen
+            ? 'fixed inset-0 z-[60] grid gap-[18px] bg-paper-dim p-4 lg:grid-cols-[minmax(0,1fr)_360px]'
+            : 'grid min-h-0 flex-1 gap-[18px] lg:grid-cols-[minmax(0,1fr)_340px]'
+        }
+      >
+        <div className="flex min-h-0 min-w-0 flex-col gap-3.5">
+          <div className="relative">
+            <PracticeToolbar
+              tool={tool}
+              onToolChange={setTool}
+              title={imageName}
+              stepIndex={stepIndex}
+              stepsTotal={steps.length}
+              stepNoun="Krok"
+              onOpenBrush={() => setIsBrushOpen((open) => !open)}
+              isBrushOpen={isBrushOpen}
+              onUndo={handleUndo}
+              onRedo={redoStroke}
+              onClear={handleClear}
+              canUndo={canUndo}
+              canRedo={canRedo}
+              isFullscreen={isFullscreen}
+              onToggleFullscreen={() => setIsFullscreen((open) => !open)}
+            />
+            {isBrushOpen && (
+              <div className="absolute top-full right-0 z-20 mt-2">
+                <BrushPanel brush={brush} onChange={setBrush} canvasBackground="#0d0b20" />
+              </div>
+            )}
+          </div>
+
+          {guideStroke && (
+            <StrokeMeter
+              live={live}
+              finalCoverage={awaitingNext && evaluation && !evaluation.tooShort ? evaluation.lengthRatio * 100 : null}
+            />
+          )}
+
+          <div className="relative min-h-[420px] min-w-0 flex-1">
+            <DrawingCanvas
+              layers={canvasLayers}
+              // Tylko linie bieżącego kroku: poprzednie są już narysowane ręką użytkownika.
+              referenceStrokes={currentStep?.strokes ?? []}
+              fitBounds={imageSize ? { minX: 0, minY: 0, maxX: imageSize.width, maxY: imageSize.height } : null}
+              backgroundImageSize={imageSize}
+              brushSize={brush.width}
+              brushOpacity={brush.opacity}
+              userStrokeColor={brush.color}
+              referenceStrokeColor={colors.violet}
+              tool={tool}
+              smoothing={smoothing}
+              onStrokeComplete={handleStrokeComplete}
+              onEraseStart={beginEraseSession}
+              onEraseAtPoint={handleEraseAtPoint}
+              onEraseEnd={endEraseSession}
+              onActiveStrokeChange={analyzeActiveStroke}
+              showCursorPreview
+              backgroundImageUrl={imageUrl ?? undefined}
+            />
+          </div>
+        </div>
+
+        <aside className="flex min-w-0 flex-col gap-3.5">
+          <section className="flex flex-col gap-2 rounded-[22px] border border-line bg-surface p-[18px]">
+            <h3 className="text-[15px] font-semibold text-ink-faint">
+              Krok {stepIndex + 1} z {steps.length}
+            </h3>
+            {currentStep && (
+              <>
+                <strong className="font-display text-[20px] leading-[1.15] font-bold">{currentStep.title}</strong>
+                <p className="text-[15px] text-ink-soft">{currentStep.description}</p>
+              </>
+            )}
+            <div className="mt-1 flex flex-wrap gap-[3px]" aria-hidden>
               {steps.map((step, index) => (
                 <span
                   key={step.id}
@@ -313,47 +389,22 @@ export function ImagePracticePage() {
                 />
               ))}
             </div>
-          </div>
-        </div>
-      </div>
+          </section>
 
-      {/* BOTTOM: step instruction + AI feedback */}
-      <div className={`absolute inset-x-4 bottom-4 z-10 overflow-hidden ${floating}`}>
-        {currentStep && (
-          <div className="border-b border-line px-4 py-3">
-            <p className="text-[13px] font-medium text-accent-strong">{currentStep.title}</p>
-            <p className="mt-0.5 text-[15px] text-ink">{currentStep.description}</p>
-          </div>
-        )}
-
-        <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center">
-          <div className="min-w-0 flex-1">
-            <p className="text-[13px] text-ink-faint">Komentarz</p>
-            {isAnalyzingAI ? (
-              <div className="mt-1 flex items-center gap-2 text-ink-soft">
-                <TypingDots />
-                {/* Tu model naprawdę pracuje — to nie animacja odsłonięcia jak w trybie z wzorcem. */}
-                <span className="text-sm">Model analizuje tę kreskę…</span>
-              </div>
-            ) : (
-              <p className={`mt-0.5 text-sm leading-relaxed ${aiFeedback ? 'text-ink' : 'text-ink-faint'}`}>
-                {aiFeedback ?? 'Narysuj ten krok, a pojawi się tu ocena.'}
-              </p>
-            )}
-          </div>
-
-          {(canProceed || canRetry) && (
-            <div className="flex shrink-0 gap-2">
-              {canRetry && <Button onClick={handleRetry}>Jeszcze raz</Button>}
-              {canProceed && (
-                <Button variant="primary" onClick={handleNextStep}>
-                  {isLastStep ? 'Zakończ' : 'Następny krok'}
-                  {!isLastStep && <ArrowRightIcon className="h-4 w-4" />}
-                </Button>
-              )}
-            </div>
-          )}
-        </div>
+          <FeedbackPanel
+            evaluation={evaluation}
+            live={live}
+            canProceed={canProceed}
+            canRetry={canRetry}
+            isLastStroke={isLastStep}
+            onNextStroke={handleNextStep}
+            onRetry={handleRetry}
+            emptyText="Narysuj ten krok po podświetlonej linii, a pojawi się tu ocena."
+            nextLabel="Następny krok"
+            commentText={aiFeedback}
+            isCommentPending={isAnalyzingAI}
+          />
+        </aside>
       </div>
     </section>
   )

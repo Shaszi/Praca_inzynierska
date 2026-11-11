@@ -167,17 +167,66 @@ function completeSentences(message: Anthropic.Message): string {
   throw new HttpError(502, 'Odpowiedź AI została ucięta. Spróbuj jeszcze raz.', 'truncated')
 }
 
-const IMAGE_STEPS_PROMPT = `Jesteś instruktorem rysunku. Przeanalizuj to zdjęcie i stwórz przewodnik rysowania krok po kroku.
+const IMAGE_STEPS_PROMPT = `Jesteś instruktorem rysunku. Przeanalizuj to zdjęcie i zbuduj przewodnik rysowania krok po kroku.
 
-Podziel rysunek na 4-8 kroków. Zacznij od największych, podstawowych kształtów i przejdź do szczegółów.
-Każdy krok powinien dotyczyć jednej konkretnej rzeczy do narysowania.
+NAJPIERW SPIS, POTEM KROKI
+Zacznij od pola "parts": wypisz po kolei KAŻDY element, który trzeba narysować, żeby rysunek
+był kompletny — osobno linie konstrukcyjne, osobno każdy kontur, osobno każdy detal.
+Rozbijaj: nie "twarz", tylko oś pionowa, linia oczu, linia nosa, lewe oko, prawe oko, brew lewa,
+brew prawa, nos, usta, ucho, linia żuchwy, grzywka, kosmyk boczny... Nie "dłoń", tylko bryła
+dłoni, oś nadgarstka, kciuk, każdy palec z osobna.
 
-Tytuły i opisy muszą być po polsku. Tytuł: 2–4 słowa. Opis: jedno konkretne zdanie, co narysować.`
+Potem przepisz spis na kroki, pozycja po pozycji: krok nr 1 realizuje pozycję nr 1 spisu,
+krok nr 2 pozycję nr 2 i tak dalej, aż do ostatniej. Tytuł kroku to ta pozycja spisu, słowo
+w słowo. Tablica "steps" ma mieć dokładnie tyle elementów co "parts" — ani jednego mniej.
+Nie wolno Ci skrócić listy, połączyć dwóch pozycji ani urwać jej w połowie: pominięta
+pozycja to krok, którego użytkownik nigdy nie narysuje.
+
+Spis musi mieć co najmniej 8 pozycji. Jeśli naliczyłeś mniej, patrzysz zbyt ogólnie:
+wróć i rozbij każdą rzecz na części, z których naprawdę się składa. Prosty przedmiot
+(kubek, owoc) to zwykle 8-12 pozycji, zwierzę albo dłoń 14-20, portret albo postać 18-28.
+
+KOLEJNOŚĆ
+Od konstrukcji do szczegółu. Najpierw osie, proporcje i bryły podstawowe (okręgi, prostokąty,
+walce), potem kontury właściwe, na końcu detale. Tak jak uczy się rysunku: nikt nie zaczyna
+od rzęs.
+
+LINIE POMOCNICZE — to najważniejsze
+Każdy krok ma pole "strokes": linie, które użytkownik ma w tym kroku poprowadzić po obrazku.
+To one pokazują JAK rysować, więc muszą leżeć dokładnie na tym, co widać na zdjęciu.
+
+- Współrzędne są ułamkami rozmiaru zdjęcia: x od 0 (lewa krawędź) do 1 (prawa),
+  y od 0 (góra) do 1 (dół). Punkt {"x":0.5,"y":0.5} to środek zdjęcia.
+- Zmierz położenie obiektu na zdjęciu, zanim podasz liczby. Linia obok obiektu jest gorsza
+  niż jej brak.
+- Jedna linia to łamana: dla prostej wystarczą 2 punkty, dla łuku daj 8-20 punktów,
+  dla owalu 16-24 punkty i domknij go (ostatni punkt równy pierwszemu).
+- Krok ma zwykle jedną linię. Najwyżej 4, gdy rzecz jest z natury wielokrotna
+  (np. para symetrycznych osi).
+- Krok konstrukcyjny też ma linie: oś symetrii to odcinek, bryła to prostokąt albo owal.
+
+TEKST
+Tytuł: 2-5 słów. Opis: jedno zdanie mówiące, czym poprowadzić rękę i na co uważać
+(np. "Jednym ruchem od góry w dół, nie odrywając ręki"). Po polsku.`
 
 // Structured outputs: API gwarantuje JSON zgodny ze schematem — bez wyciągania go regexem z tekstu.
+const POINT_SCHEMA = {
+  type: 'object',
+  properties: {
+    x: { type: 'number' },
+    y: { type: 'number' },
+  },
+  required: ['x', 'y'],
+  additionalProperties: false,
+}
+
 const IMAGE_STEPS_SCHEMA = {
   type: 'object',
   properties: {
+    // Pole celowo przed `steps`: model generuje po kolei, więc spis powstaje pierwszy
+    // i dalej ma już własną listę do odhaczenia. Bez tego Haiku dawał 6 kroków na portret,
+    // niezależnie od tego, o ile prosił prompt.
+    parts: { type: 'array', items: { type: 'string' } },
     steps: {
       type: 'array',
       items: {
@@ -185,17 +234,58 @@ const IMAGE_STEPS_SCHEMA = {
         properties: {
           title: { type: 'string' },
           description: { type: 'string' },
+          strokes: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: { points: { type: 'array', items: POINT_SCHEMA } },
+              required: ['points'],
+              additionalProperties: false,
+            },
+          },
         },
-        required: ['title', 'description'],
+        required: ['title', 'description', 'strokes'],
         additionalProperties: false,
       },
     },
   },
-  required: ['steps'],
+  required: ['parts', 'steps'],
   additionalProperties: false,
 }
 
-type ImageStep = { title: string; description: string }
+const MAX_STEPS = 30
+const MAX_STROKES_PER_STEP = 4
+const MAX_POINTS_PER_STROKE = 64
+
+type GuidePoint = { x: number; y: number }
+type ImageStep = { title: string; description: string; strokes: { points: GuidePoint[] }[] }
+
+/**
+ * Współrzędne z modelu to dane z zewnątrz: przycinamy do kadru i odrzucamy linie, które
+ * nie są linią (mniej niż 2 punkty). Krok bez sensownych linii zostaje — nadal niesie
+ * tytuł i opis, a brak podpowiedzi jest lepszy niż podpowiedź w losowym miejscu.
+ */
+function cleanStrokes(strokes: unknown): { points: GuidePoint[] }[] {
+  if (!Array.isArray(strokes)) return []
+  return strokes
+    .slice(0, MAX_STROKES_PER_STEP)
+    .map((stroke) => {
+      const points = Array.isArray(stroke?.points) ? stroke.points : []
+      return {
+        points: points
+          .slice(0, MAX_POINTS_PER_STROKE)
+          .filter((point: unknown): point is GuidePoint => {
+            const p = point as Partial<GuidePoint>
+            return Number.isFinite(p?.x) && Number.isFinite(p?.y)
+          })
+          .map((point: GuidePoint) => ({
+            x: Math.min(1, Math.max(0, point.x)),
+            y: Math.min(1, Math.max(0, point.y)),
+          })),
+      }
+    })
+    .filter((stroke) => stroke.points.length >= 2)
+}
 
 function parseSteps(message: Anthropic.Message): ImageStep[] {
   assertNotRefused(message)
@@ -203,8 +293,17 @@ function parseSteps(message: Anthropic.Message): ImageStep[] {
   if (message.stop_reason === 'max_tokens') {
     throw new HttpError(502, 'Plan rysowania okazał się za długi. Spróbuj jeszcze raz.', 'truncated')
   }
+  // `parts` to spis, który model robi przed krokami — wymusza jeden krok na element.
+  // Klientowi nie jest potrzebny, liczy się to, że istniał w odpowiedzi.
   const { steps } = JSON.parse(textOf(message)) as { steps: ImageStep[] }
-  const valid = steps.filter((step) => step.title.trim() && step.description.trim()).slice(0, 8)
+  const valid = steps
+    .filter((step) => step.title?.trim() && step.description?.trim())
+    .slice(0, MAX_STEPS)
+    .map((step) => ({
+      title: step.title.trim(),
+      description: step.description.trim(),
+      strokes: cleanStrokes(step.strokes),
+    }))
   if (valid.length === 0) {
     throw new HttpError(502, 'AI nie przygotowało planu dla tego zdjęcia. Spróbuj innego.', 'empty')
   }
@@ -280,7 +379,9 @@ async function handle(client: Anthropic, body: AiRequest): Promise<unknown> {
       assertImagePayload(body.image, 'image')
       const message = await client.messages.create({
         model: MODEL,
-        max_tokens: 2048,
+        // Kroki niosą teraz łamane, nie same zdania: 30 kroków po kilkanaście punktów
+        // nie zmieściłoby się w 2048 tokenach i odpowiedź ucinałaby się w połowie JSON-a.
+        max_tokens: 16000,
         thinking: NO_THINKING,
         output_config: { format: { type: 'json_schema', schema: IMAGE_STEPS_SCHEMA } },
         messages: [{

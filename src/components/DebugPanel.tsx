@@ -4,29 +4,27 @@ type DebugPanelProps = {
   lastStrokeDurationMs: number | null
 }
 
-export function DebugPanel({
-  strokeCount,
-  currentStrokePointCount,
-  lastStrokeDurationMs,
-}: DebugPanelProps) {
+// Dane techniczne płótna — zwinięte domyślnie, żeby nie zaśmiecały interfejsu.
+export function DebugPanel({ strokeCount, currentStrokePointCount, lastStrokeDurationMs }: DebugPanelProps) {
   return (
-    <section className="rounded-2xl border border-amber-300 bg-amber-50/80 p-4 text-sm text-amber-900">
-      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-amber-700">Debug</p>
-      <div className="mt-2 grid gap-1 sm:grid-cols-3">
-        <p>
-          Strokes: <span className="font-semibold">{strokeCount}</span>
-        </p>
-        <p>
-          Current stroke points:{' '}
-          <span className="font-semibold">{currentStrokePointCount}</span>
-        </p>
-        <p>
-          Last stroke duration:{' '}
-          <span className="font-semibold">
-            {lastStrokeDurationMs !== null ? `${lastStrokeDurationMs} ms` : 'N/A'}
-          </span>
-        </p>
-      </div>
-    </section>
+    <details className="group text-[13px] text-ink-faint">
+      <summary className="inline-flex cursor-pointer list-none items-center gap-1 select-none hover:text-ink-soft">
+        <span className="transition group-open:rotate-90">›</span> Dane techniczne
+      </summary>
+      <dl className="mt-2 flex flex-wrap gap-x-6 gap-y-1 tabular-nums">
+        <div className="flex gap-1.5">
+          <dt>Kreski:</dt>
+          <dd className="text-ink-soft">{strokeCount}</dd>
+        </div>
+        <div className="flex gap-1.5">
+          <dt>Punkty bieżącej kreski:</dt>
+          <dd className="text-ink-soft">{currentStrokePointCount}</dd>
+        </div>
+        <div className="flex gap-1.5">
+          <dt>Czas ostatniej kreski:</dt>
+          <dd className="text-ink-soft">{lastStrokeDurationMs !== null ? `${lastStrokeDurationMs} ms` : '—'}</dd>
+        </div>
+      </dl>
+    </details>
   )
 }

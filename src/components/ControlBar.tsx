@@ -1,76 +1,97 @@
 import type { ReactNode } from 'react'
+import { SmoothingControl } from '../features/canvas/components/SmoothingControl'
+import type { SmoothingSettings, Tool } from '../types/drawing'
+import { Button, Divider, rangeClass, Segmented } from './ui'
 
 type ControlBarProps = {
   brushSize: number
   onBrushSizeChange: (size: number) => void
+  tool?: Tool
+  onToolChange?: (tool: Tool) => void
+  smoothing?: SmoothingSettings
+  onSmoothingChange?: (smoothing: SmoothingSettings) => void
   onUndo: () => void
   onRedo: () => void
   onClear: () => void
   canUndo: boolean
   canRedo: boolean
   extraControls?: ReactNode
+  minBrushSize?: number
+  maxBrushSize?: number
+  className?: string
+  /** Ramka, tło i padding. Osobno od className, bo dopisanie konkurencyjnego tła
+   *  rozstrzyga kolejność w wygenerowanym CSS, nie kolejność klas w atrybucie. */
+  chromeClassName?: string
 }
+
+const TOOL_OPTIONS: { value: Tool; label: string }[] = [
+  { value: 'brush', label: 'Pędzel' },
+  { value: 'eraser', label: 'Gumka' },
+]
 
 export function ControlBar({
   brushSize,
   onBrushSizeChange,
+  tool = 'brush',
+  onToolChange,
+  smoothing,
+  onSmoothingChange,
   onUndo,
   onRedo,
   onClear,
   canUndo,
   canRedo,
   extraControls,
+  minBrushSize = 1,
+  maxBrushSize = 28,
+  className = '',
+  // Projekt nie daje paskowi własnej karty — kontrolki leżą wprost na blacie.
+  chromeClassName = '',
 }: ControlBarProps) {
   return (
-    <section className="flex flex-wrap items-center gap-3 rounded-2xl border border-slate-300 bg-white p-3 shadow-sm">
-      <label className="flex items-center gap-2 text-sm text-slate-700">
-        <span className="font-medium">Brush</span>
+    <section
+      className={`flex flex-wrap items-center gap-x-3.5 gap-y-2.5 ${chromeClassName} ${className}`}
+    >
+      {onToolChange && (
+        <Segmented options={TOOL_OPTIONS} value={tool} onChange={onToolChange} ariaLabel="Narzędzie" />
+      )}
+
+      <label className="flex items-center gap-2">
+        <span className="text-[13px] text-ink-soft">Rozmiar</span>
         <input
           type="range"
-          min={1}
-          max={28}
+          min={minBrushSize}
+          max={maxBrushSize}
           step={1}
           value={brushSize}
           onChange={(event) => onBrushSizeChange(Number(event.target.value))}
-          className="h-2 w-36 cursor-pointer accent-sky-500"
+          className={`w-24 ${rangeClass}`}
         />
-        <span className="w-8 text-right text-slate-500">{brushSize}</span>
+        <span className="w-6 text-right text-xs tabular-nums text-ink-soft">{brushSize}</span>
       </label>
 
-      <button
-        type="button"
-        onClick={onUndo}
-        disabled={!canUndo}
-        className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition ${
-          canUndo
-            ? 'border-slate-300 bg-slate-50 text-slate-700 hover:border-slate-400'
-            : 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400'
-        }`}
-      >
-        Undo
-      </button>
-      <button
-        type="button"
-        onClick={onRedo}
-        disabled={!canRedo}
-        className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition ${
-          canRedo
-            ? 'border-slate-300 bg-slate-50 text-slate-700 hover:border-slate-400'
-            : 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400'
-        }`}
-      >
-        Redo
-      </button>
+      {smoothing && onSmoothingChange ? (
+        <>
+          <Divider />
+          <SmoothingControl value={smoothing} onChange={onSmoothingChange} />
+        </>
+      ) : null}
 
-      <button
-        type="button"
-        onClick={onClear}
-        className="rounded-lg border border-slate-300 bg-slate-50 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:border-slate-400"
-      >
-        Clear
-      </button>
+      <Divider />
 
-      {extraControls ? <div className="ml-auto flex items-center gap-2">{extraControls}</div> : null}
+      <div className="flex items-center gap-0.5">
+        <Button variant="ghost" size="sm" onClick={onUndo} disabled={!canUndo} title="Cofnij (Ctrl+Z)">
+          Cofnij
+        </Button>
+        <Button variant="ghost" size="sm" onClick={onRedo} disabled={!canRedo} title="Ponów (Ctrl+Y)">
+          Ponów
+        </Button>
+        <Button variant="danger" size="sm" onClick={onClear}>
+          Wyczyść
+        </Button>
+      </div>
+
+      {extraControls ? <div className="ml-auto flex items-center gap-1">{extraControls}</div> : null}
     </section>
   )
 }

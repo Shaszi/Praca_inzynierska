@@ -137,7 +137,9 @@ function fragmentLength(points: Point[]): number {
   return total;
 }
 
-function strokeFromFragment(brushSize: number, points: Point[]): Stroke | null {
+// Spread źródłowej kreski, nie wypisywanie pól: fragment po wymazaniu musi zachować
+// kolor i krycie, inaczej przecięta linia zmieniałaby barwę.
+function strokeFromFragment(source: Stroke, points: Point[]): Stroke | null {
   if (points.length < 2) {
     return null;
   }
@@ -147,7 +149,7 @@ function strokeFromFragment(brushSize: number, points: Point[]): Stroke | null {
   }
 
   return {
-    brushSize,
+    ...source,
     points,
   };
 }
@@ -189,10 +191,7 @@ export function eraseAtPoint(
           stroke.brushSize,
         )
       ) {
-        nextStrokes.push({
-          brushSize: stroke.brushSize,
-          points: [{ ...sourcePoints[0] }],
-        });
+        nextStrokes.push({ ...stroke, points: [{ ...sourcePoints[0] }] });
       }
       continue;
     }
@@ -209,10 +208,7 @@ export function eraseAtPoint(
       const keptSegments = clipOutsideCircle(a, b, x, y, effectiveRadius);
 
       if (keptSegments.length === 0) {
-        const completedStroke = strokeFromFragment(
-          stroke.brushSize,
-          currentFragment,
-        );
+        const completedStroke = strokeFromFragment(stroke, currentFragment);
         if (completedStroke) {
           nextStrokes.push(completedStroke);
         }
@@ -236,10 +232,7 @@ export function eraseAtPoint(
             Math.abs(lastPoint.y - segment.start.y) <= EPSILON;
 
           if (!contiguous) {
-            const completedStroke = strokeFromFragment(
-              stroke.brushSize,
-              currentFragment,
-            );
+            const completedStroke = strokeFromFragment(stroke, currentFragment);
             if (completedStroke) {
               nextStrokes.push(completedStroke);
             }
@@ -251,10 +244,7 @@ export function eraseAtPoint(
       }
     }
 
-    const completedStroke = strokeFromFragment(
-      stroke.brushSize,
-      currentFragment,
-    );
+    const completedStroke = strokeFromFragment(stroke, currentFragment);
     if (completedStroke) {
       nextStrokes.push(completedStroke);
     }

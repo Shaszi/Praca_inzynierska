@@ -1,147 +1,106 @@
-# Drawing Training Tool
+# Kreska — trener rysunku
 
-Modern web app for stroke practice and reference drawing creation.
+Aplikacja webowa do codziennego ćwiczenia kreski: odrysowywanie wzorców kreska po kresce, rysunek ze zdjęcia rozpisany przez AI na kroki, cel w dniach i historia postępów zapisywana na koncie użytkownika.
 
-## Tech Stack
+## Architektura
 
-- React 19
-- TypeScript
-- Vite
-- Tailwind CSS v4
-- React Router v7
-- Functional components + hooks
-
-## Features
-
-- Fullscreen responsive canvas with dark, tool-like UI
-- Pointer-based drawing (mouse + pointer input)
-- Smooth rendering with `requestAnimationFrame`
-- Stroke capture as arrays of timestamped points
-- Brush size slider, undo last stroke, clear canvas
-- Practice mode with guide overlay (line/circle) + feedback
-- Teacher mode to save/load/delete reference strokes in `localStorage`
-- Simple stroke analysis module ready for DTW extension
-
-## Stroke Data Model
-
-```ts
-type Point = {
-  x: number;
-  y: number;
-  timestamp: number;
-};
-
-type Stroke = Point[];
+```text
+Przeglądarka (React + Vite)
+  │  supabase-js (sesja JWT)
+  ▼
+Supabase (uruchamiany lokalnie w Dockerze)
+  ├─ Auth (GoTrue)        — email + hasło, Google OAuth
+  ├─ PostgREST            — REST API nad bazą, dostęp ograniczony przez RLS
+  ├─ PostgreSQL           — profile, wzorce, sesje ćwiczeń, próby
+  └─ Edge Function `ai`   — pośrednik do Claude API; klucz Anthropic tylko na serwerze
 ```
 
-Each finished stroke is captured and logged to the console for debugging.
+### Model danych (`supabase/migrations`)
 
-## Routes
+| Tabela / widok | Zawartość |
+|---|---|
+| `profiles` | nazwa użytkownika, cel (`goal_days`, `goal_started_on`), strefa czasowa |
+| `drawing_references` | wzorce kresek tworzone w edytorze |
+| `practice_sessions` | jeden rysunek (tryb wzorca lub zdjęcia), średnia ocena, końcowe kreski |
+| `practice_attempts` | pojedyncze kreski w sesji: ocena geometryczna i komentarz AI |
+| `daily_activity` (widok) | liczba ukończonych rysunków na dzień w strefie czasowej użytkownika |
 
-- `/` Home
-- `/practice` Practice mode
-- `/teacher` Teacher mode
+Każda tabela ma włączone Row Level Security — użytkownik ma dostęp wyłącznie do własnych wierszy. Profil tworzy się automatycznie po rejestracji (trigger `on_auth_user_created`).
 
-## Getting Started
+**Cel:** dzień zalicza się do celu, jeśli użytkownik ukończy w nim co najmniej jeden rysunek. Logika celu, serii i kalendarza aktywności jest w `src/features/progress/utils/goalProgress.ts` (z testami).
 
-### 1. Install dependencies
+## Uruchomienie lokalne
+
+Wymagania: Node.js 20+, Docker Desktop.
 
 ```bash
 npm install
-```
 
-### 2. Run development server
+# 1. Sekrety
+cp supabase/functions/.env.example supabase/functions/.env   # wpisz ANTHROPIC_API_KEY
+cp supabase/.env.example supabase/.env                       # dane Google OAuth (opcjonalnie)
 
-```bash
+# 2. Backend: baza, auth, API (pierwsze uruchomienie pobiera obrazy Dockera)
+npx supabase start
+
+# 3. Frontend: skopiuj "Publishable"/"anon key" z wyniku `npx supabase status`
+cp .env.example .env.local
 npm run dev
+
+# 4. Edge Function z AI (osobny terminal)
+npx supabase functions serve --env-file supabase/functions/.env
 ```
 
-### 3. Build production bundle
+- Aplikacja: http://localhost:5173
+- Panel bazy (Supabase Studio): http://127.0.0.1:54323
+- Skrzynka testowa na maile z auth (Mailpit): http://127.0.0.1:54324
 
-```bash
-npm run build
-```
+Po zmianie schematu: `npx supabase migration new <nazwa>`, potem `npx supabase db reset` i `npm run db:types`.
 
-### 4. Lint
+### Logowanie przez Google
 
-```bash
-npm run lint
-```
+1. Google Cloud Console → APIs & Services → Credentials → *OAuth client ID* (typ *Web application*).
+2. Authorized redirect URI: `http://127.0.0.1:54321/auth/v1/callback`.
+3. Wpisz Client ID i Secret do `supabase/.env`, następnie `npx supabase stop && npx supabase start`.
 
-## Project Structure
+## Skrypty
+
+| Polecenie | Opis |
+|---|---|
+| `npm run dev` | serwer deweloperski Vite |
+| `npm run build` | sprawdzenie typów i build produkcyjny |
+| `npm test` | testy jednostkowe (Vitest) |
+| `npm run lint` | ESLint |
+| `npm run db:types` | generuje typy TS ze schematu bazy do `src/lib/database.types.ts` |
+
+## Struktura
 
 ```text
 src/
-  components/
-    AppLayout.tsx
-    ControlBar.tsx
-    DrawingCanvas.tsx
-    FeedbackPanel.tsx
-    GuideOverlay.tsx
-    ReferenceSelector.tsx
-    TopNavigation.tsx
-  hooks/
-    useDrawingCanvas.ts
-  pages/
-    HomePage.tsx
-    PracticePage.tsx
-    TeacherPage.tsx
-    NotFoundPage.tsx
-  types/
-    drawing.ts
-  utils/
-    analysis.ts
-    feedback.ts
-    storage.ts
-    strokes.ts
-  App.tsx
-  main.tsx
-  index.css
+  components/          AppShell (menu), BrandMark, ikony
+  features/
+    auth/              AuthProvider, strona logowania/rejestracji, RequireAuth
+    canvas/            silnik płótna, wygładzanie kresek
+    practice/          ćwiczenia z wzorcem, analiza podobieństwa
+    progress/          cel, seria, kalendarz aktywności, zapis sesji
+    teacher/           edytor wzorców (zapis w tabeli drawing_references)
+  lib/                 klient Supabase i typy bazy
+  pages/               strony routera (/, /login, /app/...)
+  services/            wywołania AI przez Edge Function
+supabase/
+  config.toml          konfiguracja lokalnego stosu
+  migrations/          schemat bazy + RLS
+  functions/ai/        Edge Function pośrednicząca do Claude API
 ```
 
-## Core Modules
+## Licencje wykorzystanego oprogramowania
 
-### `src/hooks/useDrawingCanvas.ts`
-
-Canvas engine hook responsible for:
-
-- pointer interaction lifecycle
-- responsive canvas sizing
-- frame-based stroke drawing with `requestAnimationFrame`
-- returning completed strokes to page-level state
-
-### `src/utils/analysis.ts`
-
-Contains:
-
-- `normalizeStroke(stroke)`
-  - translates points so center is at `(0, 0)`
-  - scales stroke to fit a unit box
-- `distanceBetweenPoints(a, b)`
-- `compareStrokes(strokeA, strokeB)`
-  - returns similarity score from `0` to `1`
-  - structured so DTW can replace internals later
-
-### `src/utils/feedback.ts`
-
-`getFeedback(stroke)` rules:
-
-- high deviation -> `"Line is uneven"`
-- too slow or too fast -> `"Try smoother motion"`
-
-## Local Storage
-
-Teacher references are stored under key:
-
-- `drawing-training-references`
-
-Managed by:
-
-- `loadReferences()`
-- `saveReferences(references)`
-
-## Notes for Future Expansion
-
-- Replace current point-to-point comparison with DTW in `compareStrokes`
-- Add multi-stroke reference matching and scoring aggregation
-- Add AI-assisted coaching on top of normalized stroke statistics
+| Komponent | Licencja |
+|---|---|
+| Supabase (CLI, Studio, Realtime, Storage) | Apache-2.0 / MIT |
+| Supabase Auth (GoTrue), PostgREST, supabase-js | MIT |
+| PostgreSQL | PostgreSQL License |
+| React, Vite, Vitest, React Router | MIT |
+| Tailwind CSS | MIT |
+| Anthropic SDK (`@anthropic-ai/sdk`, w Edge Function) | MIT |
+| Fonty Geist, Instrument Serif | SIL Open Font License 1.1 |

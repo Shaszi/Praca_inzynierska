@@ -1,32 +1,148 @@
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Unbounded:wght@500;600;700&family=Onest:wght@400;500;600;700&display=swap');
 @import 'tailwindcss';
 
+@theme {
+  /* Szkicownik nocą: granat w kropkowej siatce, jaskrawe akcenty markera.
+     Projekt jest jednomotywowy — nie ma wariantu jasnego. */
+  --font-sans: 'Onest', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-display: 'Unbounded', 'Arial Black', system-ui, sans-serif;
+  /* Projekt nie używa monospace. Liczby trzymają się w kolumnach przez tabular-nums
+     (reguła w @layer base niżej), więc font-mono zostaje tą samą rodziną co treść. */
+  --font-mono: 'Onest', system-ui, sans-serif;
+
+  --color-paper: #13102b;
+  --color-paper-dim: #0d0b20;
+  --color-surface: #1d1942;
+  --color-surface-dim: #28235a;
+  --color-line: #363170;
+  --color-line-strong: #4b4590;
+
+  --color-ink: #f5f3ff;
+  --color-ink-hover: #ffffff;
+  --color-ink-soft: #c4bfe8;
+  --color-ink-faint: #9c96d0;
+
+  /* Akcent to cytryna: przycisk główny, aktualny krok, podświetlenie wzorca. */
+  --color-accent: #ffd84a;
+  --color-accent-strong: #ffe57d;
+  --color-on-accent: #1a1236;
+  --color-accent-soft: #2a2545;
+  --color-accent-line: #5c5320;
+
+  --color-success: #3ee6a8;
+  --color-success-soft: #16342c;
+  --color-warn: #ffa53d;
+  --color-warn-soft: #3a2a14;
+  --color-danger: #ff6b85;
+  --color-danger-soft: #3a1d28;
+
+  /* Pozostałe barwy markera, używane punktowo. */
+  --color-violet: #9d7dff;
+  --color-pink: #ff5fa8;
+  --color-cyan: #4fd2ff;
+  --color-mint: #3ee6a8;
+  --color-lemon: #ffd84a;
+  --color-orange: #ff9a3d;
+}
+
 :root {
-  color-scheme: light;
+  color-scheme: dark;
+  --shadow-raised: 0 1px 2px rgb(0 0 0 / 0.45);
+  --shadow-float: 0 18px 44px -20px rgb(0 0 0 / 0.75);
+  /* Kropkowa siatka blatu i dwie poświaty — tło aplikacji. */
+  --dots: radial-gradient(circle at 1px 1px, rgb(157 125 255 / 0.16) 1px, transparent 0);
+  /* Siatka kanwy jest gęstsza i bledsza niż siatka tła. */
+  --canvas-dots: radial-gradient(circle at 1px 1px, rgb(157 125 255 / 0.14) 1.2px, transparent 0);
 }
 
 * {
   box-sizing: border-box;
 }
 
+/* conic-gradient nie da się animować, bo tło nie jest interpolowalne. Zarejestrowana
+   własność liczbowa już tak — dzięki temu pierścień wypełnia się płynnie. */
+@property --ring-p {
+  syntax: '<number>';
+  inherits: false;
+  initial-value: 0;
+}
+
+.ring-fill {
+  background: conic-gradient(var(--ring-c) calc(var(--ring-p) * 1%), var(--color-surface-dim) 0);
+  transition: --ring-p 0.55s cubic-bezier(0.3, 1, 0.4, 1);
+}
+
+/* Wiersze oceny wchodzą po kolei — to jest „odsłonięcie" wyniku, nie czekanie na nic. */
+@keyframes check-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.check-in {
+  animation: check-in 0.32s cubic-bezier(0.3, 1, 0.4, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ring-fill {
+    transition: none;
+  }
+
+  .check-in {
+    animation: none;
+  }
+}
+
 body {
   margin: 0;
   min-height: 100vh;
-  font-family: 'Space Grotesk', 'Segoe UI', sans-serif;
-  background-color: #f8fafc;
-  color: #0f172a;
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.5;
+  background-color: var(--color-paper);
   background-image:
-    radial-gradient(circle at 15% 20%, rgba(14, 165, 233, 0.08), transparent 34%),
-    radial-gradient(circle at 90% 2%, rgba(99, 102, 241, 0.05), transparent 22%),
-    linear-gradient(180deg, #f8fafc 0%, #eef2ff 100%);
+    var(--dots),
+    radial-gradient(700px 420px at 92% -6%, rgb(255 95 168 / 0.16), transparent 70%),
+    radial-gradient(640px 420px at -8% 30%, rgb(79 210 255 / 0.1), transparent 70%);
+  background-size: 22px 22px, auto, auto;
+  background-attachment: fixed;
+  color: var(--color-ink);
+  -webkit-font-smoothing: antialiased;
 }
 
 #root {
   min-height: 100vh;
 }
 
-button,
-input,
-select {
-  font: inherit;
+/* W warstwie base, żeby klasy Tailwinda (np. text-[13px]) mogły to nadpisać. */
+@layer base {
+  button,
+  input,
+  select {
+    font: inherit;
+  }
+
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+  }
+
+  /* Projekt nie ma monospace, ale liczby nadal muszą stać w kolumnach. */
+  .font-mono {
+    font-variant-numeric: tabular-nums;
+  }
+
+  :focus-visible {
+    outline: 3px solid var(--color-accent);
+    outline-offset: 3px;
+    border-radius: 8px;
+  }
 }

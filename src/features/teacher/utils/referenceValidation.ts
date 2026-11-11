@@ -1,4 +1,5 @@
 import type { Point, ReferenceDrawing, Stroke } from '../../../types/drawing'
+import type { StorageResult } from '../services/storageTypes'
 
 const DEFAULT_BRUSH_SIZE = 5
 
@@ -24,15 +25,23 @@ export function isModernStroke(value: unknown): value is Stroke {
   return (
     isFiniteNumber(stroke.brushSize) &&
     stroke.brushSize > 0 &&
+    (stroke.color === undefined || (typeof stroke.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(stroke.color))) &&
+    (stroke.opacity === undefined || (isFiniteNumber(stroke.opacity) && stroke.opacity > 0 && stroke.opacity <= 1)) &&
     Array.isArray(stroke.points) &&
     stroke.points.every((point) => isPoint(point))
   )
 }
 
+// Pola są tu wypisane celowo — to biała lista na granicy zaufania, nie przeoczenie.
+// `value` pochodzi z importowanego pliku JSON albo z wiersza bazy, więc spread (`...value`)
+// przepuściłby dowolne obce pola do stanu aplikacji i dalej do Supabase.
+// Dodając nowe pole do Stroke/Point, dopisz je TUTAJ wraz z walidacją w isModernStroke/isPoint.
 export function normalizeStroke(value: unknown): Stroke | null {
   if (isModernStroke(value)) {
     return {
       brushSize: value.brushSize,
+      ...(value.color !== undefined ? { color: value.color } : {}),
+      ...(value.opacity !== undefined ? { opacity: value.opacity } : {}),
       points: value.points.map((point) => ({ ...point })),
     }
   }
@@ -82,23 +91,28 @@ export function normalizeReference(value: unknown): ReferenceDrawing | null {
   }
 }
 
-export function validateReference(value: unknown): value is ReferenceDrawing {
-  if (typeof value !== 'object' || value === null) {
-    return false
-  }
-
-  const reference = value as Partial<ReferenceDrawing>
-  return (
-    typeof reference.id === 'string' &&
-    reference.id.trim().length > 0 &&
-    typeof reference.name === 'string' &&
-    reference.name.trim().length > 0 &&
-    isFiniteNumber(reference.createdAt) &&
-    Array.isArray(reference.strokes) &&
-    reference.strokes.every((stroke) => isModernStroke(stroke))
-  )
-}
-
 export function isStrokeCollectionEmpty(strokes: Stroke[]): boolean {
   return strokes.length === 0 || strokes.every((stroke) => stroke.points.length === 0)
+}
+
+/**
+ * Parsowanie pliku JSON wrzuconego przez użytkownika — jedyna granica zaufania dla
+ * danych z dysku. Celowo używa `normalizeReference`, a nie samego type guarda: ona
+ * kopiuje po białej liście, więc obce pola z obcego pliku nie wchodzą do stanu aplikacji
+ * ani dalej do bazy. Przy okazji akceptuje stary format kresek jako gołe `Point[]`.
+ */
+export function parseImportedReference(jsonText: string): StorageResult<ReferenceDrawing | null> {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(jsonText)
+  } catch {
+    return { data: null, error: 'To nie jest poprawny plik JSON.' }
+  }
+
+  const reference = normalizeReference(parsed)
+  if (!reference) {
+    return { data: null, error: 'Plik nie wygląda jak wzorzec. Oczekuję pól id, name, strokes i createdAt.' }
+  }
+
+  return { data: reference, error: null }
 }

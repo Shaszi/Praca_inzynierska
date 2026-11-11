@@ -1,40 +1,87 @@
-import type { Stroke } from '../../../types/drawing'
+import { useState } from 'react'
+import type { Layer, Point, SmoothingSettings, Stroke, Tool } from '../../../types/drawing'
 import { DrawingCanvas } from '../../canvas/components/DrawingCanvas'
-import { ReferenceOverlay } from './ReferenceOverlay'
+import { IDENTITY_VIEW, type Bounds, type CanvasView } from '../../canvas/utils/canvasPoint'
+import { useCanvasColors } from '../../canvas/utils/themeColors'
 
 type PracticeCanvasProps = {
-  userStrokes: Stroke[]
+  layers: Layer[]
+  activeLayerId: string
   referenceStrokes: Stroke[]
   brushSize: number
+  brushOpacity?: number
+  tool?: Tool
+  smoothing?: SmoothingSettings
   userStrokeColor: string
-  onStrokeComplete: (stroke: Stroke) => void
+  onStrokeComplete: (stroke: Stroke, rawPoints: Point[]) => void
   onCurrentStrokePointCountChange: (count: number) => void
   onActiveStrokeChange: (stroke: Stroke | null) => void
+  onEraseStart?: () => void
+  onEraseAtPoint?: (point: Point) => void
+  onEraseEnd?: () => void
+  /** Miejsce największego błędu ostatniej kreski (współrzędne płótna). */
+  errorMarker?: { x: number; y: number } | null
+  /** Obrys całego wzorca — płótno wpisuje go w kadr. */
+  fitBounds?: Bounds | null
 }
 
 export function PracticeCanvas({
-  userStrokes,
+  layers,
+  activeLayerId,
   referenceStrokes,
   brushSize,
+  brushOpacity,
+  tool = 'brush',
+  smoothing,
   userStrokeColor,
   onStrokeComplete,
   onCurrentStrokePointCountChange,
   onActiveStrokeChange,
+  onEraseStart,
+  onEraseAtPoint,
+  onEraseEnd,
+  errorMarker = null,
+  fitBounds = null,
 }: PracticeCanvasProps) {
+  const [view, setView] = useState<CanvasView>(IDENTITY_VIEW)
+  const colors = useCanvasColors()
+
   return (
     <div className="relative h-full w-full">
-      <ReferenceOverlay hasReference={referenceStrokes.length > 0} />
       <DrawingCanvas
-        userStrokes={userStrokes}
+        layers={layers}
+        activeLayerId={activeLayerId}
         referenceStrokes={referenceStrokes}
         brushSize={brushSize}
+        brushOpacity={brushOpacity}
+        tool={tool}
+        smoothing={smoothing}
         onStrokeComplete={onStrokeComplete}
+        onEraseStart={onEraseStart}
+        onEraseAtPoint={onEraseAtPoint}
+        onEraseEnd={onEraseEnd}
         onCurrentStrokePointCountChange={onCurrentStrokePointCountChange}
         onActiveStrokeChange={onActiveStrokeChange}
+        showCursorPreview
         guide={null}
         userStrokeColor={userStrokeColor}
-        referenceStrokeColor="#7dd3fc"
+        // Akcent, nie bladofiolet: to kreska, którą użytkownik ma narysować TERAZ.
+        referenceStrokeColor={colors.violet}
+        onViewChange={setView}
+        fitBounds={fitBounds}
       />
+      {errorMarker && (
+        <span
+          className="pointer-events-none absolute h-7 w-7 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-danger bg-danger/10"
+          style={{
+            // Marker żyje w DOM, więc trzeba go przeliczyć z układu rysunku na ekran.
+            // +1 px: ramka kontenera płótna.
+            left: errorMarker.x * view.scale + view.offsetX + 1,
+            top: errorMarker.y * view.scale + view.offsetY + 1,
+          }}
+          aria-hidden
+        />
+      )}
     </div>
   )
 }

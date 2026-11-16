@@ -109,6 +109,11 @@ export const referenceStorageService = {
     return { data: null, error: null }
   },
 
+  async submitForReview(id: string): Promise<string | null> {
+    const { error } = await supabase.rpc('submit_reference_for_review', { p_reference_id: id })
+    return error ? 'Nie udało się zgłosić wzorca.' : null
+  },
+
   async moderate(id: string, approved: boolean, reason?: string): Promise<string | null> {
     const { error } = await supabase.rpc('moderate_reference', {
       p_reference_id: id,

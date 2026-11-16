@@ -10,7 +10,6 @@ import {
 } from '../features/teacher/services/referenceStorageService'
 import { parseImportedReference } from '../features/teacher/utils/referenceValidation'
 import type { ReferenceDrawing } from '../types/drawing'
-import { supabase } from '../lib/supabase'
 
 type LibraryTab = Exclude<LibraryFilter, 'available'>
 
@@ -55,8 +54,8 @@ export function LibraryPage() {
 
   const publish = useCallback(
     async (id: string) => {
-      const { error } = await supabase.rpc('submit_reference_for_review', { p_reference_id: id })
-      setMessage(error ? 'Nie udało się zgłosić wzorca.' : 'Wzorzec czeka na sprawdzenie przez moderatora.')
+      const error = await referenceStorageService.submitForReview(id)
+      setMessage(error ?? 'Wzorzec czeka na sprawdzenie przez moderatora.')
       refresh()
     },
     [refresh],

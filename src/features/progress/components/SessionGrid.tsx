@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { progressService, type PracticeAttempt, type PracticeSessionSummary } from '../services/progressService'
+import { ShareAsReference } from './ShareAsReference'
 import { StrokeThumbnail } from './StrokeThumbnail'
 
 const dateFormat = new Intl.DateTimeFormat('pl-PL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
@@ -73,6 +74,12 @@ function SessionCard({
           </Link>
         </div>
       )}
+
+      {session.finalStrokes?.length ? (
+        <div className="border-t border-line px-3 py-2.5">
+          <ShareAsReference title={session.title} strokes={session.finalStrokes} />
+        </div>
+      ) : null}
 
       {isOpen && <AttemptList sessionId={session.id} />}
     </li>

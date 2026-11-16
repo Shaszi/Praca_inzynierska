@@ -152,7 +152,9 @@ export function DrawingCanvas({
           <img
             src={backgroundImageUrl}
             alt=""
-            className={`select-none opacity-20 ${backgroundImageSize ? '' : 'h-full w-full object-contain'}`}
+            // max-w-none: preflight daje obrazkom max-width:100%, a zdjęcie szersze niż kanwa
+            // kurczyło się wtedy względem linii pomocniczych (np. po przypięciu menu).
+            className={`select-none opacity-20 ${backgroundImageSize ? 'max-w-none' : 'h-full w-full object-contain'}`}
             style={backgroundImageSize ?? undefined}
             draggable={false}
           />

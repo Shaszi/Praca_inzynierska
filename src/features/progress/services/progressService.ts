@@ -23,8 +23,21 @@ export type PracticeAttempt = {
   createdAt: string
 }
 
+export type ImageProject = {
+  id: string
+  title: string
+  stepIndex: number
+  stepsTotal: number
+  photoPath: string
+  strokes: Stroke[]
+  startedAt: string
+  isDone: boolean
+}
+
 export type PracticeSessionSummary = {
   id: string
+  /** Niepuste = projekt ze zdjęciem, do którego można wrócić. */
+  photoPath: string | null
   mode: PracticeMode
   title: string
   stepsTotal: number
@@ -48,6 +61,7 @@ function toProfile(row: Tables<'profiles'>): Profile {
 function toSession(row: Tables<'practice_sessions'>): PracticeSessionSummary {
   return {
     id: row.id,
+    photoPath: row.photo_path,
     mode: row.mode as PracticeMode,
     title: row.title,
     stepsTotal: row.steps_total,
@@ -107,6 +121,9 @@ export const progressService = {
     title: string
     stepsTotal: number
     referenceId?: string | null
+    /** Tryb ze zdjęcia: ścieżka pliku w Storage i plan kursu, żeby dało się tu wrócić. */
+    photoPath?: string | null
+    course?: unknown[] | null
   }): Promise<string> {
     const { data, error } = await supabase
       .from('practice_sessions')
@@ -115,6 +132,8 @@ export const progressService = {
         title: params.title.slice(0, 200),
         steps_total: params.stepsTotal,
         reference_id: params.referenceId ?? null,
+        photo_path: params.photoPath ?? null,
+        course: (params.course ?? null) as Json,
       })
       .select('id')
       .single()
@@ -146,6 +165,71 @@ export const progressService = {
       metrics: (params.metrics ?? null) as Json,
     })
     if (error) fail('Nie udało się zapisać próby', error)
+  },
+
+  /**
+   * Projekty ze zdjęcia, też nieukończone — `listSessions` pokazuje wyłącznie skończone
+   * rysunki, więc projekt w toku nie miałby się gdzie pojawić.
+   */
+  async listImageProjects(limit = 12): Promise<ImageProject[]> {
+    const { data, error } = await supabase
+      .from('practice_sessions')
+      .select('id, title, step_index, steps_total, photo_path, final_strokes, started_at, completed_at')
+      .eq('mode', 'image')
+      .not('photo_path', 'is', null)
+      .order('started_at', { ascending: false })
+      .limit(limit)
+    if (error) fail('Nie udało się pobrać projektów', error)
+    return data.map((row) => ({
+      id: row.id,
+      title: row.title,
+      stepIndex: row.step_index ?? 0,
+      stepsTotal: row.steps_total,
+      photoPath: row.photo_path as string,
+      strokes: (row.final_strokes as Stroke[] | null) ?? [],
+      startedAt: row.started_at,
+      isDone: row.completed_at !== null,
+    }))
+  },
+
+  /**
+   * Zapis w trakcie, nie tylko na koniec: bez tego powrót do projektu wracałby
+   * do pustego płótna na kroku pierwszym.
+   */
+  async saveProgress(params: { sessionId: string; stepIndex: number; strokes: Stroke[] }): Promise<void> {
+    const { error } = await supabase
+      .from('practice_sessions')
+      .update({
+        step_index: params.stepIndex,
+        steps_completed: params.stepIndex,
+        final_strokes: params.strokes as unknown as Json,
+      })
+      .eq('id', params.sessionId)
+    if (error) fail('Nie udało się zapisać postępu', error)
+  },
+
+  /** Projekt do wznowienia: kurs, zdjęcie, kreski i krok, na którym ćwiczący stanął. */
+  async getProject(sessionId: string): Promise<{
+    title: string
+    photoPath: string | null
+    course: unknown[] | null
+    stepIndex: number
+    strokes: Stroke[]
+  } | null> {
+    const { data, error } = await supabase
+      .from('practice_sessions')
+      .select('title, photo_path, course, step_index, final_strokes')
+      .eq('id', sessionId)
+      .maybeSingle()
+    if (error) fail('Nie udało się otworzyć projektu', error)
+    if (!data) return null
+    return {
+      title: data.title,
+      photoPath: data.photo_path,
+      course: Array.isArray(data.course) ? (data.course as unknown[]) : null,
+      stepIndex: data.step_index ?? 0,
+      strokes: (data.final_strokes as Stroke[] | null) ?? [],
+    }
   },
 
   /** Historia kroków jednej sesji — to z niej ekran postępu pokazuje, co model napisał. */

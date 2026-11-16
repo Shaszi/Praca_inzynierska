@@ -57,13 +57,13 @@ isOneToOne: false
                   ]
                 },"practice_sessions": {
                   Row: {
-                    "average_score": number | null,"completed_at": string | null,"final_strokes": Json | null,"id": string,"mode": string,"reference_id": string | null,"started_at": string,"steps_completed": number,"steps_total": number,"title": string,"user_id": string
+                    "average_score": number | null,"completed_at": string | null,"course": Json | null,"final_strokes": Json | null,"id": string,"mode": string,"photo_path": string | null,"reference_id": string | null,"started_at": string,"step_index": number,"steps_completed": number,"steps_total": number,"title": string,"user_id": string
                   }
                   Insert: {
-                    "average_score"?: number | null,"completed_at"?: string | null,"final_strokes"?: Json | null,"id"?: string,"mode": string,"reference_id"?: string | null,"started_at"?: string,"steps_completed"?: number,"steps_total": number,"title": string,"user_id"?: string
+                    "average_score"?: number | null,"completed_at"?: string | null,"course"?: Json | null,"final_strokes"?: Json | null,"id"?: string,"mode": string,"photo_path"?: string | null,"reference_id"?: string | null,"started_at"?: string,"step_index"?: number,"steps_completed"?: number,"steps_total": number,"title": string,"user_id"?: string
                   }
                   Update: {
-                    "average_score"?: number | null,"completed_at"?: string | null,"final_strokes"?: Json | null,"id"?: string,"mode"?: string,"reference_id"?: string | null,"started_at"?: string,"steps_completed"?: number,"steps_total"?: number,"title"?: string,"user_id"?: string
+                    "average_score"?: number | null,"completed_at"?: string | null,"course"?: Json | null,"final_strokes"?: Json | null,"id"?: string,"mode"?: string,"photo_path"?: string | null,"reference_id"?: string | null,"started_at"?: string,"step_index"?: number,"steps_completed"?: number,"steps_total"?: number,"title"?: string,"user_id"?: string
                   }
                   Relationships: [
                     {

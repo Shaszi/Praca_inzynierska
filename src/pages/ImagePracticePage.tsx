@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { ImageIcon } from '../components/icons'
 import { Button, PageHeader, Spinner } from '../components/ui'
 import { BrushPanel } from '../features/canvas/components/BrushPanel'
 import { useBrushSettings } from '../features/canvas/hooks/useBrushSettings'
 import { useCanvasColors } from '../features/canvas/utils/themeColors'
+import { PracticeLayout } from '../features/practice/components/PracticeLayout'
 import { PracticeToolbar } from '../features/practice/components/PracticeToolbar'
 import { StrokeMeter } from '../features/practice/components/StrokeMeter'
 import { usePracticeAnalysis } from '../features/practice/hooks/usePracticeAnalysis'
@@ -13,11 +14,13 @@ import { DrawingCanvas } from '../features/canvas/components/DrawingCanvas'
 import { useSmoothingSettings } from '../features/canvas/hooks/useSmoothingSettings'
 import { StrokeThumbnail } from '../features/progress/components/StrokeThumbnail'
 import { usePracticeSession } from '../features/progress/hooks/usePracticeSession'
+import { photoService, downscaleToJpeg } from '../features/progress/services/photoService'
+import { progressService, type ImageProject } from '../features/progress/services/progressService'
 import { useSingleLayer } from '../features/canvas/hooks/useLayers'
 import { useStrokes } from '../hooks/useStrokes'
 import {
   analyzeStrokeAgainstImage,
-  generateImageSteps,
+  buildContourCourse,
   readImageSize,
   type ImageGuideStep,
   type SupportedMediaType,
@@ -40,6 +43,23 @@ function readFileAsBase64(file: File): Promise<{ base64: string; mediaType: Supp
     reader.onerror = reject
     reader.readAsDataURL(file)
   })
+}
+
+/** Zdjęcie przez płótno: stamtąd biorą się piksele dla detekcji konturów. */
+async function readPixels(
+  url: string,
+): Promise<{ pixels: Uint8ClampedArray; width: number; height: number; image: HTMLImageElement }> {
+  const image = new Image()
+  image.src = url
+  await image.decode()
+  const canvas = document.createElement('canvas')
+  canvas.width = image.naturalWidth
+  canvas.height = image.naturalHeight
+  const context = canvas.getContext('2d', { willReadFrequently: true })
+  if (!context) throw new Error('Przeglądarka nie dała kontekstu 2D.')
+  context.drawImage(image, 0, 0)
+  const { data } = context.getImageData(0, 0, canvas.width, canvas.height)
+  return { pixels: data, width: canvas.width, height: canvas.height, image }
 }
 
 export function ImagePracticePage() {
@@ -65,9 +85,28 @@ export function ImagePracticePage() {
   const [isAnalyzingAI, setIsAnalyzingAI] = useState(false)
   const [aiFeedback, setAiFeedback] = useState<string | null>(null)
   const [awaitingNext, setAwaitingNext] = useState(false)
+  /** Numer próby: odpowiedź modelu starsza niż bieżąca próba nie ma już gdzie trafić. */
+  const attemptRef = useRef(0)
+  const [photoPath, setPhotoPath] = useState<string | null>(null)
+  const [resumedSessionId, setResumedSessionId] = useState<string | null>(null)
+  const [searchParams] = useSearchParams()
+  const [projects, setProjects] = useState<ImageProject[]>([])
+
+  // Lista projektów tylko na ekranie wgrywania — tam jej się szuka.
+  useEffect(() => {
+    if (phase !== 'upload') return
+    let cancelled = false
+    progressService
+      .listImageProjects()
+      .then((list) => !cancelled && setProjects(list))
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [phase])
 
   const {
-    strokes, addStroke, undoStroke, redoStroke, clearStrokes,
+    strokes, addStroke, undoStroke, redoStroke, clearStrokes, replaceStrokes,
     beginEraseSession, eraseInSession, endEraseSession, canUndo, canRedo,
   } = useStrokes()
   const canvasLayers = useSingleLayer(strokes)
@@ -77,11 +116,66 @@ export function ImagePracticePage() {
   const sessionParams = useMemo(
     () =>
       steps.length > 0
-        ? { mode: 'image' as const, title: imageName || 'Rysunek ze zdjęcia', stepsTotal: steps.length }
+        ? {
+            mode: 'image' as const,
+            title: imageName || 'Rysunek ze zdjęcia',
+            stepsTotal: steps.length,
+            photoPath,
+            course: steps,
+            existingSessionId: resumedSessionId,
+          }
         : null,
-    [imageName, steps.length],
+    [imageName, photoPath, resumedSessionId, steps],
   )
-  const { recordAttempt, complete: completeSession, reset: resetSession, saveError } = usePracticeSession(sessionParams)
+  const { recordAttempt, complete: completeSession, reset: resetSession, saveProgress, saveError } =
+    usePracticeSession(sessionParams)
+
+  // Wznowienie projektu: kurs, zdjęcie, kreski i krok biorą się z bazy, a nie
+  // z ponownej analizy — druga detekcja konturów dałaby inny podział na kroki.
+  const sessionParam = searchParams.get('session')
+  const restoredRef = useRef<string | null>(null)
+  // `replaceStrokes` przez ref, nie przez listę zależności: gdy efekt restartuje się
+  // w połowie wczytywania, strażnik `restoredRef` blokuje drugie podejście i strona
+  // zostaje na zawsze na ekranie „Analizuję zdjęcie".
+  const replaceStrokesRef = useRef(replaceStrokes)
+  useEffect(() => {
+    replaceStrokesRef.current = replaceStrokes
+  }, [replaceStrokes])
+
+  useEffect(() => {
+    if (!sessionParam || restoredRef.current === sessionParam) return
+    restoredRef.current = sessionParam
+
+    setPhase('analyzing')
+    progressService
+      .getProject(sessionParam)
+      .then(async (project) => {
+        if (!project?.course || project.course.length === 0) {
+          setAnalyzeError('Nie znaleziono tego projektu albo nie da się go wznowić.')
+          setPhase('upload')
+          return
+        }
+        const url = project.photoPath ? await photoService.signedUrl(project.photoPath) : null
+        const course = project.course as ImageGuideStep[]
+
+        setImageName(project.title)
+        setPhotoPath(project.photoPath)
+        setResumedSessionId(sessionParam)
+        setSteps(course)
+        setStepIndex(Math.min(project.stepIndex, course.length - 1))
+        replaceStrokesRef.current(project.strokes)
+        if (url) {
+          setImageUrl(url)
+          // Rozmiar z pliku, bo kurs jest w pikselach oryginału, a nie zmniejszonej kopii.
+          setImageSize(await readImageSize(url))
+        }
+        setPhase('practicing')
+      })
+      .catch(() => {
+        setAnalyzeError('Nie udało się otworzyć projektu.')
+        setPhase('upload')
+      })
+  }, [sessionParam])
 
   const processFile = useCallback(async (file: File) => {
     if (!ACCEPTED_TYPES.includes(file.type as SupportedMediaType)) {
@@ -93,13 +187,18 @@ export function ImagePracticePage() {
     try {
       const { base64, mediaType: mt } = await readFileAsBase64(file)
       const url = URL.createObjectURL(file)
-      const size = await readImageSize(url)
+      // Piksele są potrzebne do konturów, więc zdjęcie i tak musi przejść przez płótno.
+      const { pixels, width, height, image } = await readPixels(url)
       setImageUrl(url)
-      setImageSize(size)
+      setImageSize({ width, height })
       setImageBase64(base64)
       setMediaType(mt)
       setImageName(file.name.replace(/\.[^.]+$/, ''))
-      const generatedSteps = await generateImageSteps(base64, mt, size.width, size.height)
+      const generatedSteps = await buildContourCourse(pixels, width, height, base64, mt)
+      // Zdjęcie do Storage dopiero teraz: gdy model nie dał planu, nie ma czego zapisywać.
+      const stored = await photoService.upload(await downscaleToJpeg(image)).catch(() => null)
+      setPhotoPath(stored)
+      setResumedSessionId(null)
       setSteps(generatedSteps)
       setStepIndex(0)
       setPhase('practicing')
@@ -121,8 +220,13 @@ export function ImagePracticePage() {
   const handleDragLeave = useCallback(() => setIsDragging(false), [])
 
   const currentStep = steps[stepIndex] ?? null
-  // shortcut: pasek i kółko mierzą pierwszą linię kroku, nie wszystkie naraz.
-  // Większość kroków ma jedną; przy kilku podnieść, gdy ocena ma objąć cały krok.
+  // Stabilna tożsamość: płótno przelicza widok, gdy obrys się zmieni, a nie co render.
+  const fitBounds = useMemo(
+    () => (imageSize ? { minX: 0, minY: 0, maxX: imageSize.width, maxY: imageSize.height } : null),
+    [imageSize],
+  )
+  // Krok ma zawsze dokładnie jedną linię (patrz splitToSingleContourSteps), więc ocena
+  // porównuje kreskę z tym, co użytkownik naprawdę ma narysować.
   const guideStroke = currentStep?.strokes[0] ?? null
   const { evaluation, live, analyzeActiveStroke, evaluateCompletedStroke, resetAnalysis } =
     usePracticeAnalysis(guideStroke)
@@ -138,18 +242,27 @@ export function ImagePracticePage() {
     // Ocena lokalna liczy się natychmiast z linii pomocniczej kroku; komentarz modelu
     // dochodzi chwilę później, tak samo jak w ćwiczeniu z wzorcem.
     const result = evaluateCompletedStroke(stroke, rawPoints)
+    // Kliknięcie albo urwany ruch nie jest próbą: panel oceny nie miałby co pokazać,
+    // a razem z nim zniknęłyby przyciski i krok byłby nie do opuszczenia.
+    if (result?.tooShort) {
+      undoStroke()
+      return
+    }
+    // Ocena lokalna wystarczy, żeby iść dalej — nie każemy czekać na model.
+    setAwaitingNext(true)
     setIsAnalyzingAI(true)
     setAiFeedback(null)
-    setAwaitingNext(false)
+    const attempt = ++attemptRef.current
     let feedback: string | null = null
     try {
       feedback = await analyzeStrokeAgainstImage(
         strokes, stroke, imageBase64, mediaType, currentStep.title, currentStep.description,
       )
-      setAiFeedback(feedback)
+      // Użytkownik mógł w tym czasie przejść dalej albo powtórzyć kreskę; wtedy ten
+      // komentarz dotyczy już nieistniejącej próby i nie wolno go pokazać.
+      if (attemptRef.current === attempt) setAiFeedback(feedback)
     } finally {
-      setIsAnalyzingAI(false)
-      setAwaitingNext(true)
+      if (attemptRef.current === attempt) setIsAnalyzingAI(false)
       recordAttempt({
         stepIndex,
         stroke,
@@ -158,17 +271,22 @@ export function ImagePracticePage() {
         aiFeedback: feedback,
       })
     }
-  }, [addStroke, currentStep, evaluateCompletedStroke, strokes, imageBase64, mediaType, recordAttempt, stepIndex])
+  }, [addStroke, currentStep, evaluateCompletedStroke, undoStroke, strokes, imageBase64, mediaType, recordAttempt, stepIndex])
 
   const handleNextStep = useCallback(() => {
     if (stepIndex >= steps.length - 1) { setPhase('done'); completeSession(strokes); return }
+    attemptRef.current++
+    // Zapis po każdym kroku: do projektu wracamy dokładnie tu, gdzie się skończyło.
+    saveProgress(stepIndex + 1, strokes)
     setStepIndex((i) => i + 1)
     setAiFeedback(null)
     setAwaitingNext(false)
+    setIsAnalyzingAI(false)
     resetAnalysis()
-  }, [stepIndex, steps.length, completeSession, resetAnalysis, strokes])
+  }, [stepIndex, steps.length, completeSession, resetAnalysis, saveProgress, strokes])
 
   const handleRetry = useCallback(() => {
+    attemptRef.current++
     undoStroke(); setAiFeedback(null); setAwaitingNext(false); setIsAnalyzingAI(false); resetAnalysis()
   }, [resetAnalysis, undoStroke])
 
@@ -229,6 +347,35 @@ export function ImagePracticePage() {
         {analyzeError && (
           <p className="rounded-[16px] bg-danger-soft px-3.5 py-3 text-sm font-medium text-danger">{analyzeError}</p>
         )}
+
+        {projects.length > 0 && (
+          <section className="flex flex-col gap-3">
+            <h3 className="text-[15px] font-semibold text-ink-faint">Twoje projekty</h3>
+            <ul className="grid list-none grid-cols-1 gap-3 p-0 sm:grid-cols-2 lg:grid-cols-4">
+              {projects.map((project) => (
+                <li key={project.id} className="flex flex-col gap-2 rounded-[18px] border border-line bg-surface p-3">
+                  <div className="grid aspect-[4/3] place-items-center rounded-[14px] bg-paper-dim">
+                    {project.strokes.length > 0 ? (
+                      <StrokeThumbnail strokes={project.strokes} className="h-[80%] w-[80%]" />
+                    ) : (
+                      <span className="text-xs text-ink-faint">jeszcze pusty</span>
+                    )}
+                  </div>
+                  <b className="truncate text-[14.5px]" title={project.title}>{project.title}</b>
+                  <small className="text-[12.5px] text-ink-faint">
+                    {project.isDone ? 'Ukończony' : `Krok ${project.stepIndex + 1} z ${project.stepsTotal}`}
+                  </small>
+                  <Link
+                    to={`/app/practice/image?session=${project.id}`}
+                    className="mt-auto inline-flex min-h-9 items-center justify-center rounded-full bg-accent px-3.5 text-sm font-semibold text-on-accent transition hover:bg-accent-strong"
+                  >
+                    {project.isDone ? 'Otwórz' : 'Wróć do projektu'}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
       </section>
     )
   }
@@ -281,8 +428,8 @@ export function ImagePracticePage() {
   }
 
   // --- Practicing phase — full-screen canvas with floating panels ---
-  const canProceed = awaitingNext && !isAnalyzingAI
-  const canRetry = awaitingNext && !isAnalyzingAI && canUndo
+  const canProceed = awaitingNext
+  const canRetry = awaitingNext && canUndo
   const isLastStep = stepIndex >= steps.length - 1
 
   return (
@@ -303,15 +450,11 @@ export function ImagePracticePage() {
         <p className="rounded-[16px] bg-danger-soft px-3.5 py-3 text-sm font-medium text-danger">{saveError}</p>
       )}
 
-      {/* Ten sam układ co w ćwiczeniu z wzorcem: kanwa bierze resztę, ocena siedzi w szynie 340 px. */}
-      <div
-        className={
-          isFullscreen
-            ? 'fixed inset-0 z-[60] grid gap-[18px] bg-paper-dim p-4 lg:grid-cols-[minmax(0,1fr)_360px]'
-            : 'grid min-h-0 flex-1 gap-[18px] lg:grid-cols-[minmax(0,1fr)_340px]'
-        }
-      >
-        <div className="flex min-h-0 min-w-0 flex-col gap-3.5">
+      {/* Kanwa bierze resztę, ocena siedzi w szynie 340 px; na pełnym ekranie oba idą do menu. */}
+      <PracticeLayout
+        isFullscreen={isFullscreen}
+        tools={
+          <>
           <div className="relative">
             <PracticeToolbar
               tool={tool}
@@ -344,12 +487,15 @@ export function ImagePracticePage() {
             />
           )}
 
+          </>
+        }
+        canvas={
           <div className="relative min-h-[420px] min-w-0 flex-1">
             <DrawingCanvas
               layers={canvasLayers}
               // Tylko linie bieżącego kroku: poprzednie są już narysowane ręką użytkownika.
               referenceStrokes={currentStep?.strokes ?? []}
-              fitBounds={imageSize ? { minX: 0, minY: 0, maxX: imageSize.width, maxY: imageSize.height } : null}
+              fitBounds={fitBounds}
               backgroundImageSize={imageSize}
               brushSize={brush.width}
               brushOpacity={brush.opacity}
@@ -365,10 +511,16 @@ export function ImagePracticePage() {
               showCursorPreview
               backgroundImageUrl={imageUrl ?? undefined}
             />
+            {canProceed && (
+              // Na tablecie panel oceny bywa pod płótnem — przycisk musi być tam, gdzie ręka.
+              <Button variant="primary" className="absolute right-3 bottom-3 z-10 shadow-lg" onClick={handleNextStep}>
+                {isLastStep ? 'Zakończ' : 'Następny krok'}
+              </Button>
+            )}
           </div>
-        </div>
-
-        <aside className="flex min-w-0 flex-col gap-3.5">
+        }
+        panel={
+          <>
           <section className="flex flex-col gap-2 rounded-[22px] border border-line bg-surface p-[18px]">
             <h3 className="text-[15px] font-semibold text-ink-faint">
               Krok {stepIndex + 1} z {steps.length}
@@ -404,8 +556,9 @@ export function ImagePracticePage() {
             commentText={aiFeedback}
             isCommentPending={isAnalyzingAI}
           />
-        </aside>
-      </div>
+          </>
+        }
+      />
     </section>
   )
 }

@@ -50,10 +50,24 @@ type UseCanvasResult = {
 type CanvasMetrics = { width: number; height: number; dpr: number };
 
 
+function sameBounds(a: Bounds | null, b: Bounds | null): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return a.minX === b.minX && a.minY === b.minY && a.maxX === b.maxX && a.maxY === b.maxY;
+}
+
 const MIN_SCALE = 0.5;
 const MAX_SCALE = 6;
 // Margines między wzorcem a krawędzią płótna, w pikselach ekranu.
 const FIT_PADDING = 28;
+/**
+ * O ile musi zmienić się kadr, żeby warto było wpisać wzorzec na nowo. Drobne ruchy
+ * układu nie mogą ruszać widoku: na wąskim ekranie panel oceny leży pod kanwą i zmienia
+ * wysokość w chwili rozpoczęcia kreski, co przeliczało skalę w trakcie rysowania —
+ * na iPadzie wyglądało to jak oddalenie przy dotknięciu i powrót przy puszczeniu.
+ * Obrót tabletu albo zmiana okna przekraczają ten próg i nadal dopasowują.
+ */
+const REFIT_SIZE_CHANGE = 0.25;
 // Prędkość wędrowania kreskowania wzorca, w pikselach rysunku na sekundę.
 const GUIDE_DASH_SPEED = 26;
 
@@ -150,9 +164,20 @@ export function useCanvas({
   const layersDirtyRef = useRef(true);
   const viewRef = useRef<CanvasView>(IDENTITY_VIEW);
   const fitBoundsRef = useRef<Bounds | null>(fitBounds);
+  /**
+   * Czy użytkownik sam ustawił widok kółkiem albo przeciągnięciem. Jeśli tak, zmiana
+   * rozmiaru płótna nie ma prawa wrócić do dopasowania: panel oceny rozrasta się po
+   * każdej kresce, co zmienia wysokość kadru i kasowało przybliżenie w trakcie pracy.
+   */
+  const userAdjustedViewRef = useRef(false);
+  /** Rozmiar kadru, dla którego policzono obecne dopasowanie. */
+  const fittedSizeRef = useRef<{ width: number; height: number } | null>(null);
   // Przesuwanie płótna: środkowy przycisk albo prawy. Zapamiętujemy widok z chwili
   // startu, żeby liczyć przesunięcie od niego, a nie kumulować błędu z klatek.
   const panRef = useRef<{ pointerId: number; startX: number; startY: number; origin: CanvasView } | null>(null);
+  /** Palce na ekranie. Jeden rysuje, dwa przesuwają i skalują — jak w programach do rysowania. */
+  const touchesRef = useRef<Map<number, { x: number; y: number }>>(new Map());
+  const gestureRef = useRef<{ distance: number; midX: number; midY: number; origin: CanvasView } | null>(null);
   const guidePhaseRef = useRef(0);
   const guideRafRef = useRef<number | null>(null);
 
@@ -296,6 +321,8 @@ export function useCanvas({
 
       // Bitmapy warstw są rasteryzowane w skali widoku, więc muszą powstać na nowo —
       // dzięki temu przybliżona kreska jest ostra, a nie rozmytym powiększeniem piksli.
+      // Zatrzask na widok wyjściowy oddaje sterowanie z powrotem automatowi.
+      userAdjustedViewRef.current = viewRef.current !== base;
       layersDirtyRef.current = true;
       onViewChange?.(viewRef.current);
       scheduleRedraw();
@@ -334,7 +361,12 @@ export function useCanvas({
     };
   }, [zoomAt]);
 
-  const resizeCanvas = useCallback(() => {
+  /**
+   * `refit` tylko dla zmian, które naprawdę są zmianą kadru: obrót tabletu albo okna.
+   * Kontener potrafi zmienić rozmiar, bo urósł sąsiedni panel oceny — to nie powód,
+   * żeby ruszać przybliżenie, a na wąskim ekranie wyglądało jak skok przy każdej kresce.
+   */
+  const resizeCanvas = useCallback((refit = false) => {
     const container = containerRef.current;
     const canvas = canvasRef.current;
     if (!container || !canvas) return;
@@ -352,7 +384,15 @@ export function useCanvas({
     // Kasuje to przybliżenie kółkiem — i dobrze: po zmianie okna wzorzec ma znów
     // wypełniać kadr. Tylko tam, gdzie jest co dopasowywać: edytor i tryb ze zdjęcia
     // nie podają obrysu i zachowują przybliżenie przez zmianę rozmiaru, jak dotąd.
-    if (fitBoundsRef.current) {
+    const fitted = fittedSizeRef.current;
+    const changedALot =
+      !fitted ||
+      Math.abs(width - fitted.width) / Math.max(fitted.width, 1) > REFIT_SIZE_CHANGE ||
+      Math.abs(height - fitted.height) / Math.max(fitted.height, 1) > REFIT_SIZE_CHANGE;
+
+    // Nigdy w trakcie kreski: przesunięcie widoku pod ręką przenosi rysowany punkt.
+    if (refit && fitBoundsRef.current && !userAdjustedViewRef.current && changedALot && !isPointerActiveRef.current) {
+      fittedSizeRef.current = { width, height };
       viewRef.current = baseView();
       onViewChange?.(viewRef.current);
     }
@@ -361,12 +401,48 @@ export function useCanvas({
     redrawScene();
   }, [baseView, onViewChange, redrawScene]);
 
+  /** Środek i rozstaw dwóch pierwszych palców, w pikselach płótna. */
+  const readPinch = useCallback(() => {
+    const [a, b] = [...touchesRef.current.values()];
+    if (!a || !b) return null;
+    return { midX: (a.x + b.x) / 2, midY: (a.y + b.y) / 2, distance: Math.max(1, Math.hypot(b.x - a.x, b.y - a.y)) };
+  }, []);
+
+  /**
+   * Drugi palec w trakcie kreski znaczy „chciałem przesunąć, nie rysować".
+   * Kreska jest porzucana, a nie zatwierdzana — inaczej każde przesunięcie zostawiałoby
+   * na rysunku przypadkowy ogonek.
+   */
+  const cancelActiveStroke = useCallback(() => {
+    if (!isPointerActiveRef.current) return;
+    isPointerActiveRef.current = false;
+    activePointsRef.current = [];
+    rawPointsRef.current = [];
+    stabilizerRef.current = null;
+    lastPointerPointRef.current = null;
+    onCurrentStrokePointCountChange?.(0);
+    onActiveStrokeChange?.(null);
+    onEraseEnd?.();
+    scheduleRedraw();
+  }, [onActiveStrokeChange, onCurrentStrokePointCountChange, onEraseEnd, scheduleRedraw]);
+
   const onPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLCanvasElement>) => {
       const canvas = canvasRef.current;
       if (!canvas) return;
 
       event.preventDefault();
+
+      if (event.pointerType === "touch") {
+        const bounds = canvas.getBoundingClientRect();
+        touchesRef.current.set(event.pointerId, { x: event.clientX - bounds.left, y: event.clientY - bounds.top });
+        if (touchesRef.current.size >= 2) {
+          cancelActiveStroke();
+          const pinch = readPinch();
+          if (pinch) gestureRef.current = { ...pinch, origin: viewRef.current };
+          return;
+        }
+      }
 
       // Środkowy (1) i prawy (2) przycisk przesuwają płótno, nie rysują.
       if (event.button === 1 || event.button === 2) {
@@ -409,11 +485,39 @@ export function useCanvas({
       });
       scheduleRedraw();
     },
-    [brushOpacity, brushSize, onActiveStrokeChange, onCurrentStrokePointCountChange, onEraseAtPoint, onEraseStart, scheduleRedraw, tool],
+    [brushOpacity, brushSize, cancelActiveStroke, onActiveStrokeChange, onCurrentStrokePointCountChange, onEraseAtPoint, onEraseStart, readPinch, scheduleRedraw, tool],
   );
 
   const onPointerMove = useCallback(
     (event: ReactPointerEvent<HTMLCanvasElement>) => {
+      if (event.pointerType === "touch" && touchesRef.current.has(event.pointerId)) {
+        const canvas = canvasRef.current;
+        const bounds = canvas?.getBoundingClientRect();
+        if (bounds) {
+          touchesRef.current.set(event.pointerId, { x: event.clientX - bounds.left, y: event.clientY - bounds.top });
+        }
+        const gesture = gestureRef.current;
+        const pinch = gesture && touchesRef.current.size >= 2 ? readPinch() : null;
+        if (gesture && pinch) {
+          const factor = pinch.distance / gesture.distance;
+          const scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, gesture.origin.scale * factor));
+          // Punkt rysunku, który był pod środkiem palców na starcie, ma tam zostać —
+          // bez tego obraz ucieka spod ręki przy każdym zsunięciu palców.
+          const anchorX = (gesture.midX - gesture.origin.offsetX) / gesture.origin.scale;
+          const anchorY = (gesture.midY - gesture.origin.offsetY) / gesture.origin.scale;
+          viewRef.current = {
+            scale,
+            offsetX: pinch.midX - anchorX * scale,
+            offsetY: pinch.midY - anchorY * scale,
+          };
+          userAdjustedViewRef.current = true;
+          layersDirtyRef.current = true;
+          onViewChange?.(viewRef.current);
+          scheduleRedraw();
+          return;
+        }
+      }
+
       const pan = panRef.current;
       if (pan && pan.pointerId === event.pointerId) {
         viewRef.current = {
@@ -421,6 +525,7 @@ export function useCanvas({
           offsetX: pan.origin.offsetX + (event.clientX - pan.startX),
           offsetY: pan.origin.offsetY + (event.clientY - pan.startY),
         };
+        userAdjustedViewRef.current = true;
         // shortcut: pełny replay warstw na każdą klatkę przesuwania. Przy kilkuset
         // kreskach zacznie zacinać — wtedy składać bitmapy z przesunięciem zamiast
         // rasteryzować je od nowa, bo samo przesunięcie nie zmienia skali.
@@ -462,12 +567,18 @@ export function useCanvas({
       });
       scheduleRedraw();
     },
-    [onActiveStrokeChange, onCurrentStrokePointCountChange, onEraseAtPoint, scheduleRedraw, tool],
+    [onActiveStrokeChange, onCurrentStrokePointCountChange, onEraseAtPoint, onViewChange, readPinch, scheduleRedraw, tool],
   );
 
   const onPointerUp = useCallback(
     (event: ReactPointerEvent<HTMLCanvasElement>) => {
       const canvas = canvasRef.current;
+
+      if (event.pointerType === "touch" && touchesRef.current.delete(event.pointerId)) {
+        if (touchesRef.current.size < 2) gestureRef.current = null;
+        // Palec podniesiony po geście nie kończy żadnej kreski — ta została porzucona.
+        if (!isPointerActiveRef.current) return;
+      }
 
       const pan = panRef.current;
       if (pan && pan.pointerId === event.pointerId) {
@@ -540,9 +651,14 @@ export function useCanvas({
     };
   }, [redrawScene, referenceStrokes]);
 
-  // Nowy wzorzec = nowy obrys do wpisania w kadr.
+  // Nowy wzorzec = nowy obrys do wpisania w kadr. Porównanie po wartościach, nie po
+  // tożsamości: wywołujący, który liczy obrys w JSX, dawałby nowy obiekt co render,
+  // a wtedy każdy render kasowałby przybliżenie i kreska w ruchu skakałaby po kadrze.
   useEffect(() => {
+    if (sameBounds(fitBoundsRef.current, fitBounds)) return;
     fitBoundsRef.current = fitBounds;
+    userAdjustedViewRef.current = false;
+    fittedSizeRef.current = { ...metricsRef.current };
     viewRef.current = baseView();
     onViewChange?.(viewRef.current);
     layersDirtyRef.current = true;
@@ -553,13 +669,17 @@ export function useCanvas({
     const container = containerRef.current;
     if (!container) return;
 
-    const observer = new ResizeObserver(resizeCanvas);
+    // Obserwator pilnuje tylko bitmapy; o ponownym dopasowaniu decyduje zmiana okna.
+    const observer = new ResizeObserver(() => resizeCanvas(false));
     observer.observe(container);
-    window.addEventListener("resize", resizeCanvas);
-    resizeCanvas();
+    const onWindowResize = () => resizeCanvas(true);
+    window.addEventListener("resize", onWindowResize);
+    window.addEventListener("orientationchange", onWindowResize);
+    resizeCanvas(true);
     return () => {
       observer.disconnect();
-      window.removeEventListener("resize", resizeCanvas);
+      window.removeEventListener("resize", onWindowResize);
+      window.removeEventListener("orientationchange", onWindowResize);
       // Reset the ref too — otherwise scheduleRedraw() would think a frame is still pending
       // and never draw again (happens on StrictMode's mount → unmount → mount)
       if (rafRef.current !== null) {

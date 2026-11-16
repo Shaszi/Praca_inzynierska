@@ -6,6 +6,7 @@ import { FeedbackPanel } from '../components/FeedbackPanel'
 import { Modal } from '../components/Modal'
 import { BrushPanel } from '../features/canvas/components/BrushPanel'
 import { useBrushSettings } from '../features/canvas/hooks/useBrushSettings'
+import { PracticeLayout } from '../features/practice/components/PracticeLayout'
 import { PracticeToolbar } from '../features/practice/components/PracticeToolbar'
 import { useSmoothingSettings } from '../features/canvas/hooks/useSmoothingSettings'
 import { PracticeCanvas } from '../features/practice/components/PracticeCanvas'
@@ -346,15 +347,11 @@ export function PracticePage() {
         <p className="rounded-[16px] bg-danger-soft px-3.5 py-3 text-sm font-medium text-danger">{errorMessage ?? saveError}</p>
       ) : null}
 
-      {/* Układ z projektu: kanwa bierze resztę, ocena siedzi w szynie 340 px i nie zasłania rysunku. */}
-      <div
-        className={
-          isFullscreen
-            ? 'fixed inset-0 z-[60] grid gap-[18px] bg-paper-dim p-4 lg:grid-cols-[minmax(0,1fr)_360px]'
-            : 'grid min-h-0 flex-1 gap-[18px] lg:grid-cols-[minmax(0,1fr)_340px]'
-        }
-      >
-        <div className="flex min-h-0 min-w-0 flex-col gap-3.5">
+      {/* Kanwa bierze resztę, ocena siedzi w szynie 340 px; na pełnym ekranie oba idą do menu. */}
+      <PracticeLayout
+        isFullscreen={isFullscreen}
+        tools={
+          <>
           <div className="relative">
             <PracticeToolbar
               tool={tool}
@@ -393,6 +390,9 @@ export function PracticePage() {
             />
           ) : null}
 
+          </>
+        }
+        canvas={
           <div className="relative flex min-h-[420px] flex-1 gap-3.5">
             {/* Panel warstw dokowany z lewej, jak `.fs-layers` w projekcie. */}
             {isLayersOpen && (
@@ -438,6 +438,12 @@ export function PracticePage() {
               errorMarker={awaitingNext ? evaluation?.worstPoint : null}
               fitBounds={fitBounds}
             />
+            {awaitingNext && (
+              // Na tablecie panel oceny bywa pod płótnem — przycisk musi być tam, gdzie ręka.
+              <Button variant="primary" className="absolute right-3 bottom-3 z-10 shadow-lg" onClick={handleNextStroke}>
+                {currentGuideStrokeIndex >= totalStrokes - 1 ? 'Zakończ' : 'Następna kreska'}
+              </Button>
+            )}
             {!selectedReference ? (
               <p className="pointer-events-none absolute inset-x-0 top-1/2 -translate-y-1/2 text-center text-ink-faint">
                 Wybierz wzorzec u góry, żeby zacząć.
@@ -445,9 +451,9 @@ export function PracticePage() {
             ) : null}
             </div>
           </div>
-        </div>
-
-        <aside className="flex min-w-0 flex-col gap-3.5">
+        }
+        panel={
+          <>
           <FeedbackPanel
             evaluation={evaluation}
             live={live}
@@ -461,8 +467,9 @@ export function PracticePage() {
             isCommentPending={isAiPending}
             commentError={aiError}
           />
-        </aside>
-      </div>
+          </>
+        }
+      />
 
       {isCompleted && (
         <section className="flex flex-col gap-3 rounded-[18px] border border-success/30 bg-success-soft px-4 py-3.5 sm:flex-row sm:items-center">

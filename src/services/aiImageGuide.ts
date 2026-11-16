@@ -1,67 +1,120 @@
 import type { Stroke } from '../types/drawing'
+import { extractContours, pathLength, type ContourPoint } from '../features/practice/contours'
 import { drawStroke } from '../features/canvas/utils/canvasDrawing'
 import type { CanvasView } from '../features/canvas/utils/canvasPoint'
-import { describeAiError, invokeAi } from './aiClient'
+import { AiError, describeAiError, invokeAi } from './aiClient'
 
 export type ImageGuideStep = {
   id: string
   title: string
   description: string
-  /** Linie pomocnicze tego kroku, już we współrzędnych zdjęcia (piksele). */
+  /** Kontury tego kroku, we współrzędnych pikselowych zdjęcia. */
   strokes: Stroke[]
-}
-
-/** Punkt z modelu: ułamek szerokości i wysokości zdjęcia. */
-type NormalizedPoint = { x: number; y: number }
-
-const GUIDE_BRUSH_SIZE = 6
-
-/**
- * Model podaje linie w ułamkach rozmiaru zdjęcia (0–1), bo nie zna rozdzielczości pliku.
- * Tutaj skalujemy je do pikseli zdjęcia — tego samego układu, w którym płótno rysuje
- * tło i zapisuje kreski użytkownika, więc wszystko leży na sobie.
- */
-export function guideStrokesFromNormalized(
-  strokes: { points: NormalizedPoint[] }[] | undefined,
-  imageWidth: number,
-  imageHeight: number,
-): Stroke[] {
-  if (!strokes) return []
-  return strokes
-    .map((stroke) => ({
-      brushSize: GUIDE_BRUSH_SIZE,
-      points: (stroke.points ?? [])
-        .filter((point) => Number.isFinite(point?.x) && Number.isFinite(point?.y))
-        .map((point) => ({
-          x: Math.min(1, Math.max(0, point.x)) * imageWidth,
-          y: Math.min(1, Math.max(0, point.y)) * imageHeight,
-          timestamp: 0,
-        })),
-    }))
-    .filter((stroke) => stroke.points.length >= 2)
 }
 
 export type SupportedMediaType = 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif'
 
-// Edge Function zwraca kroki jako JSON zgodny ze schematem (structured outputs).
-export async function generateImageSteps(
+const GUIDE_BRUSH_SIZE = 6
+
+const toStroke = (points: ContourPoint[]): Stroke => ({
+  brushSize: GUIDE_BRUSH_SIZE,
+  // Wzorzec nie niesie czasu: ocena bierze z niego kształt, tempo liczy z kreski użytkownika.
+  points: points.map((point) => ({ x: point.x, y: point.y, timestamp: 0 })),
+})
+
+/**
+ * Kurs rysowania z wgranego zdjęcia: kontury liczy przeglądarka z pikseli, model układa
+ * je w kroki i nazywa. Dzięki temu linia, po której użytkownik prowadzi rękę, leży
+ * na obiekcie co do piksela — model nie dotyka geometrii.
+ */
+export async function buildContourCourse(
+  pixels: Uint8ClampedArray,
+  width: number,
+  height: number,
   imageBase64: string,
   mediaType: SupportedMediaType,
-  imageWidth: number,
-  imageHeight: number,
 ): Promise<ImageGuideStep[]> {
-  const { steps } = await invokeAi<{
-    steps: { title: string; description: string; strokes?: { points: NormalizedPoint[] }[] }[]
-  }>({
-    action: 'image-steps',
-    image: { data: imageBase64, mediaType },
+  const contours = extractContours(pixels, width, height)
+  if (contours.length === 0) {
+    throw new AiError('Nie znalazłem na tym zdjęciu wyraźnych konturów. Spróbuj zdjęcia z ostrzejszymi krawędziami.', 'no_contours')
+  }
+
+  const plan = await planContourSteps(imageBase64, mediaType, summarizeContours(contours, width, height))
+  return splitToSingleContourSteps(plan, contours)
+}
+
+/**
+ * Jeden krok = jedna linia. Model czasem wrzuca kilka konturów do kroku, a wtedy ocena
+ * kreski nie ma czego porównywać: mierzy pierwszy kontur, choć narysować trzeba wszystkie.
+ * Zamiast ratować to w ocenie, rozkładamy krok na tyle kroków, ile ma linii — numer
+ * w tytule mówi, że to dalszy ciąg tej samej rzeczy.
+ */
+export function splitToSingleContourSteps(
+  plan: ContourStepPlan[],
+  contours: ContourPoint[][],
+): ImageGuideStep[] {
+  const steps: ImageGuideStep[] = []
+  for (const planned of plan) {
+    const usable = planned.contours.filter((index) => contours[index]?.length >= 2)
+    usable.forEach((index, position) => {
+      steps.push({
+        id: `step-${steps.length}`,
+        title: usable.length > 1 ? `${planned.title} (${position + 1} z ${usable.length})` : planned.title,
+        description: planned.description,
+        strokes: [toStroke(contours[index])],
+      })
+    })
+  }
+  return steps
+}
+
+/**
+ * Opis konturu dla modelu. Model dostaje tylko to — gdzie kontur leży i jak jest długi —
+ * i odsyła numery pogrupowane w kroki. Punkty zostają na kliencie, bo pochodzą z pikseli
+ * zdjęcia i są dokładne; model myliłby się o kilkanaście procent kadru.
+ */
+export type ContourSummary = {
+  i: number
+  box: [number, number, number, number]
+  len: number
+  closed: boolean
+}
+
+export function summarizeContours(
+  contours: ContourPoint[][],
+  width: number,
+  height: number,
+): ContourSummary[] {
+  const diagonal = Math.hypot(width, height)
+  return contours.map((points, i) => {
+    const xs = points.map((p) => p.x)
+    const ys = points.map((p) => p.y)
+    const first = points[0]
+    const last = points[points.length - 1]
+    return {
+      i,
+      box: [Math.min(...xs) / width, Math.min(...ys) / height, Math.max(...xs) / width, Math.max(...ys) / height],
+      len: pathLength(points) / diagonal,
+      // Domknięty = koniec wraca w pobliże początku, w skali własnej długości konturu.
+      closed: Math.hypot(last.x - first.x, last.y - first.y) < 0.15 * pathLength(points),
+    }
   })
-  return steps.map((step, i) => ({
-    id: `step-${i}`,
-    title: step.title,
-    description: step.description,
-    strokes: guideStrokesFromNormalized(step.strokes, imageWidth, imageHeight),
-  }))
+}
+
+/** Krok kursu: nazwa od modelu, geometria ze zdjęcia. */
+export type ContourStepPlan = { title: string; description: string; contours: number[] }
+
+export async function planContourSteps(
+  imageBase64: string,
+  mediaType: SupportedMediaType,
+  contours: ContourSummary[],
+): Promise<ContourStepPlan[]> {
+  const { steps } = await invokeAi<{ steps: ContourStepPlan[] }>({
+    action: 'plan-contours',
+    image: { data: imageBase64, mediaType },
+    contours,
+  })
+  return steps
 }
 
 /** Rozmiar własny pliku — w tych pikselach liczymy linie pomocnicze i rysujemy tło. */

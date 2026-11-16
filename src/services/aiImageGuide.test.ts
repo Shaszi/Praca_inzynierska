@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { fitStrokesToSquare, guideStrokesFromNormalized } from './aiImageGuide'
+import { fitStrokesToSquare, splitToSingleContourSteps } from './aiImageGuide'
 import type { Stroke } from '../types/drawing'
 
 const stroke = (points: [number, number][]): Stroke => ({
@@ -60,39 +60,49 @@ describe('fitStrokesToSquare', () => {
   })
 })
 
-describe('guideStrokesFromNormalized', () => {
-  const line = (points: [number, number][]) => ({ points: points.map(([x, y]) => ({ x, y })) })
+describe('splitToSingleContourSteps', () => {
+  const contour = (n: number) => Array.from({ length: n }, (_, i) => ({ x: i, y: i }))
+  const contours = [contour(5), contour(6), contour(7), contour(8)]
 
-  it('skaluje ułamki do pikseli zdjęcia', () => {
-    const [guide] = guideStrokesFromNormalized([line([[0, 0], [0.5, 0.25], [1, 1]])], 800, 400)
-    expect(guide.points.map((p) => [p.x, p.y])).toEqual([
-      [0, 0],
-      [400, 100],
-      [800, 400],
-    ])
+  it('krok z jednym konturem zostaje jednym krokiem', () => {
+    const steps = splitToSingleContourSteps([{ title: 'Uchwyt', description: 'Łukiem', contours: [2] }], contours)
+    expect(steps).toHaveLength(1)
+    expect(steps[0].title).toBe('Uchwyt')
+    expect(steps[0].strokes).toHaveLength(1)
   })
 
-  // Współrzędne pochodzą z modelu, więc są danymi z zewnątrz, nie obietnicą.
-  it('przycina punkty wychodzące poza kadr', () => {
-    const [guide] = guideStrokesFromNormalized([line([[-0.3, 1.8], [2, -1]])], 100, 100)
-    expect(guide.points.map((p) => [p.x, p.y])).toEqual([
-      [0, 100],
-      [100, 0],
-    ])
+  // To jest reguła, dla której ta funkcja istnieje: ocena porównuje kreskę z jedną linią.
+  it('każdy krok ma dokładnie jedną linię', () => {
+    const steps = splitToSingleContourSteps(
+      [
+        { title: 'Obrys', description: 'Od góry', contours: [0, 1] },
+        { title: 'Detale', description: 'Drobne', contours: [2, 3] },
+      ],
+      contours,
+    )
+    expect(steps).toHaveLength(4)
+    for (const step of steps) expect(step.strokes).toHaveLength(1)
   })
 
-  it('wyrzuca punkty, które nie są liczbami', () => {
-    const broken = { points: [{ x: 0.1, y: 0.1 }, { x: NaN, y: 0.5 }, { x: 0.9, y: 0.9 }] }
-    const [guide] = guideStrokesFromNormalized([broken], 200, 200)
-    expect(guide.points).toHaveLength(2)
+  it('numeruje tytuł, gdy rzecz rozpada się na kilka linii', () => {
+    const steps = splitToSingleContourSteps([{ title: 'Obrys', description: 'x', contours: [0, 1, 2] }], contours)
+    expect(steps.map((s) => s.title)).toEqual(['Obrys (1 z 3)', 'Obrys (2 z 3)', 'Obrys (3 z 3)'])
   })
 
-  it('pomija linię, z której został jeden punkt albo zero', () => {
-    expect(guideStrokesFromNormalized([line([[0.5, 0.5]])], 100, 100)).toEqual([])
-    expect(guideStrokesFromNormalized([line([])], 100, 100)).toEqual([])
+  it('pomija numery konturów, których nie ma', () => {
+    const steps = splitToSingleContourSteps([{ title: 'Obrys', description: 'x', contours: [0, 99] }], contours)
+    expect(steps).toHaveLength(1)
+    expect(steps[0].title).toBe('Obrys')
   })
 
-  it('bez linii od modelu zwraca pustą listę zamiast rzucać', () => {
-    expect(guideStrokesFromNormalized(undefined, 100, 100)).toEqual([])
+  it('nadaje krokom kolejne identyfikatory mimo rozbicia', () => {
+    const steps = splitToSingleContourSteps(
+      [
+        { title: 'A', description: 'x', contours: [0, 1] },
+        { title: 'B', description: 'x', contours: [2] },
+      ],
+      contours,
+    )
+    expect(steps.map((s) => s.id)).toEqual(['step-0', 'step-1', 'step-2'])
   })
 })

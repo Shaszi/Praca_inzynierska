@@ -7,6 +7,10 @@ type SessionParams = {
   title: string
   stepsTotal: number
   referenceId?: string | null
+  photoPath?: string | null
+  course?: unknown[] | null
+  /** Wznowiony projekt: dopisujemy do istniejącej sesji zamiast zakładać nową. */
+  existingSessionId?: string | null
 }
 
 type UsePracticeSessionResult = {
@@ -18,6 +22,8 @@ type UsePracticeSessionResult = {
   discardAttempt: (stepIndex: number) => void
   /** Porzuca bieżącą sesję (np. po zmianie wzorca lub wyczyszczeniu płótna). */
   reset: () => void
+  /** Zapisuje stan w trakcie, żeby dało się wrócić do projektu na tym samym kroku. */
+  saveProgress: (stepIndex: number, strokes: Stroke[]) => void
   saveError: string | null
 }
 
@@ -46,7 +52,9 @@ export function usePracticeSession(params: SessionParams | null): UsePracticeSes
     const current = paramsRef.current
     if (!current) return null
     if (!sessionIdRef.current) {
-      sessionIdRef.current = progressService.startSession(current)
+      sessionIdRef.current = current.existingSessionId
+        ? Promise.resolve(current.existingSessionId)
+        : progressService.startSession(current)
       sessionIdRef.current.catch(() => {
         sessionIdRef.current = null
       })
@@ -76,6 +84,18 @@ export function usePracticeSession(params: SessionParams | null): UsePracticeSes
         .catch(report)
     },
     [report],
+  )
+
+  const saveProgress = useCallback<UsePracticeSessionResult['saveProgress']>(
+    (stepIndex, strokes) => {
+      const session = ensureSession()
+      if (!session) return
+      session
+        .then((sessionId) => progressService.saveProgress({ sessionId, stepIndex, strokes }))
+        .then(() => setSaveError(null))
+        .catch(report)
+    },
+    [ensureSession, report],
   )
 
   const reset = useCallback(() => {
@@ -109,5 +129,5 @@ export function usePracticeSession(params: SessionParams | null): UsePracticeSes
     [ensureSession, report, reset],
   )
 
-  return { recordAttempt, discardAttempt, complete, reset, saveError }
+  return { recordAttempt, discardAttempt, complete, reset, saveProgress, saveError }
 }

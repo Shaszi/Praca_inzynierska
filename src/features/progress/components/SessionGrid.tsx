@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { progressService, type PracticeAttempt, type PracticeSessionSummary } from '../services/progressService'
 import { StrokeThumbnail } from './StrokeThumbnail'
@@ -61,6 +62,17 @@ function SessionCard({
           </p>
         </div>
       </button>
+
+      {session.photoPath && (
+        <div className="border-t border-line px-3 py-2.5">
+          <Link
+            to={`/app/practice/image?session=${session.id}`}
+            className="inline-flex min-h-9 items-center rounded-full bg-accent px-3.5 text-sm font-semibold text-on-accent transition hover:bg-accent-strong"
+          >
+            Wróć do projektu
+          </Link>
+        </div>
+      )}
 
       {isOpen && <AttemptList sessionId={session.id} />}
     </li>

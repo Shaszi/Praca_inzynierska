@@ -26,7 +26,6 @@ const corsHeaders = {
 type ImagePayload = { data: string; mediaType: MediaType }
 
 type AiRequest =
-  | { action: 'image-steps'; image: ImagePayload }
   | {
       action: 'analyze-image-step'
       referenceImage: ImagePayload
@@ -35,6 +34,7 @@ type AiRequest =
       stepDescription: string
     }
   | { action: 'analyze-stroke'; stepTitle: string; metrics: StrokeMetrics }
+  | { action: 'plan-contours'; image: ImagePayload; contours: ContourSummary[] }
 
 // Wynik lokalnego algorytmu oceny kreski (strokeEvaluation.ts). Model dostaje gotowe
 // liczby zamiast obrazka: taniej i trafniej, bo nie musi niczego zgadywać z miniatury.
@@ -57,6 +57,22 @@ type StrokeMetrics = {
   speedPxPerSec: number
   reversed: boolean
   segments: StrokeSegment[]
+}
+
+/**
+ * Opis konturu wyciągniętego ze zdjęcia po stronie klienta. Model nigdy nie dostaje
+ * ani nie podaje punktów — geometria pochodzi z pikseli użytkownika i jest dokładna.
+ * Tu idą tylko liczby pozwalające powiedzieć, CO to za kontur: gdzie leży i jak długi jest.
+ */
+type ContourSummary = {
+  /** Numer konturu u klienta; model odwołuje się wyłącznie do niego. */
+  i: number
+  /** Ramka w ułamkach rozmiaru zdjęcia: [x0, y0, x1, y1]. */
+  box: [number, number, number, number]
+  /** Długość w ułamku przekątnej zdjęcia. */
+  len: number
+  /** Czy kontur jest domknięty (koniec wraca do początku). */
+  closed: boolean
 }
 
 /** Błąd z komunikatem dla użytkownika (po polsku) i kodem do obsługi po stronie klienta. */
@@ -129,6 +145,24 @@ function assertMetrics(value: unknown): asserts value is StrokeMetrics {
   }
 }
 
+const MAX_CONTOURS_IN = 120
+
+function assertContours(value: unknown): asserts value is ContourSummary[] {
+  if (!Array.isArray(value) || value.length === 0 || value.length > MAX_CONTOURS_IN) {
+    throw new HttpError(400, 'Nieprawidłowa lista konturów.', 'invalid_input')
+  }
+  for (const contour of value) {
+    const c = contour as Partial<ContourSummary>
+    assertFinite(c?.i, 'contour.i')
+    assertFinite(c?.len, 'contour.len')
+    if (typeof c?.closed !== 'boolean') throw new HttpError(400, 'Nieprawidłowe pole closed', 'invalid_input')
+    if (!Array.isArray(c?.box) || c.box.length !== 4) {
+      throw new HttpError(400, 'Nieprawidłowe pole box', 'invalid_input')
+    }
+    for (const n of c.box) assertFinite(n, 'contour.box')
+  }
+}
+
 async function requireUser(req: Request): Promise<void> {
   const authorization = req.headers.get('Authorization')
   if (!authorization) throw new HttpError(401, 'Sesja wygasła. Zaloguj się ponownie.', 'unauthorized')
@@ -167,66 +201,43 @@ function completeSentences(message: Anthropic.Message): string {
   throw new HttpError(502, 'Odpowiedź AI została ucięta. Spróbuj jeszcze raz.', 'truncated')
 }
 
-const IMAGE_STEPS_PROMPT = `Jesteś instruktorem rysunku. Przeanalizuj to zdjęcie i zbuduj przewodnik rysowania krok po kroku.
+const CONTOUR_PLAN_PROMPT = `Jesteś instruktorem rysunku. Na zdjęciu widzisz obiekt, a poniżej listę
+konturów, które program wykrył na TYM zdjęciu. Twoim zadaniem jest ułożyć z nich kurs rysowania.
 
-NAJPIERW SPIS, POTEM KROKI
-Zacznij od pola "parts": wypisz po kolei KAŻDY element, który trzeba narysować, żeby rysunek
-był kompletny — osobno linie konstrukcyjne, osobno każdy kontur, osobno każdy detal.
-Rozbijaj: nie "twarz", tylko oś pionowa, linia oczu, linia nosa, lewe oko, prawe oko, brew lewa,
-brew prawa, nos, usta, ucho, linia żuchwy, grzywka, kosmyk boczny... Nie "dłoń", tylko bryła
-dłoni, oś nadgarstka, kciuk, każdy palec z osobna.
+Nie rysujesz i nie podajesz żadnych współrzędnych. Odwołujesz się wyłącznie do numerów konturów.
 
-Potem przepisz spis na kroki, pozycja po pozycji: krok nr 1 realizuje pozycję nr 1 spisu,
-krok nr 2 pozycję nr 2 i tak dalej, aż do ostatniej. Tytuł kroku to ta pozycja spisu, słowo
-w słowo. Tablica "steps" ma mieć dokładnie tyle elementów co "parts" — ani jednego mniej.
-Nie wolno Ci skrócić listy, połączyć dwóch pozycji ani urwać jej w połowie: pominięta
-pozycja to krok, którego użytkownik nigdy nie narysuje.
+GŁÓWNY OBIEKT
+Najpierw ustal jeden główny obiekt zdjęcia i wpisz go w pole "subject". Jeśli na zdjęciu jest
+człowiek albo zwierzę, to on jest głównym obiektem. W przeciwnym razie główny obiekt to rzecz
+najbardziej wyeksponowana: największa, najostrzejsza, najbliżej środka kadru.
+Kurs obejmuje WYŁĄCZNIE kontury głównego obiektu. Kontury tła i otoczenia (ściany, niebo,
+podłoga, meble i przedmioty za nim, inne osoby w tle, cienie rzucane na tło, krawędzie kadru)
+pomijasz — nie trafiają do żadnego kroku.
 
-Spis musi mieć co najmniej 8 pozycji. Jeśli naliczyłeś mniej, patrzysz zbyt ogólnie:
-wróć i rozbij każdą rzecz na części, z których naprawdę się składa. Prosty przedmiot
-(kubek, owoc) to zwykle 8-12 pozycji, zwierzę albo dłoń 14-20, portret albo postać 18-28.
+ZASADY
+1. Każdy kontur głównego obiektu trafia do dokładnie jednego kroku. Żadnego nie wolno użyć
+   dwa razy. Kontur tła nie trafia nigdzie.
+2. Kolejność od konstrukcji do detalu: najpierw kontury największe i niosące kształt bryły,
+   potem średnie, na końcu drobne. Nikt nie zaczyna rysunku od szczegółu.
+3. Jeden krok to jeden kontur. Użytkownik rysuje krok jednym pociągnięciem i tak jest
+   oceniany, więc dwa kontury w kroku są nie do narysowania naraz.
+4. Kilka konturów w jednym kroku dawaj wyłącznie wtedy, gdy są tą samą rzeczą rozciętą
+   na kawałki (np. obrys przerwany w dwóch miejscach). Program i tak rozłoży je na
+   osobne kroki, a Twój tytuł posłuży im wszystkim.
 
-KOLEJNOŚĆ
-Od konstrukcji do szczegółu. Najpierw osie, proporcje i bryły podstawowe (okręgi, prostokąty,
-walce), potem kontury właściwe, na końcu detale. Tak jak uczy się rysunku: nikt nie zaczyna
-od rzęs.
-
-LINIE POMOCNICZE — to najważniejsze
-Każdy krok ma pole "strokes": linie, które użytkownik ma w tym kroku poprowadzić po obrazku.
-To one pokazują JAK rysować, więc muszą leżeć dokładnie na tym, co widać na zdjęciu.
-
-- Współrzędne są ułamkami rozmiaru zdjęcia: x od 0 (lewa krawędź) do 1 (prawa),
-  y od 0 (góra) do 1 (dół). Punkt {"x":0.5,"y":0.5} to środek zdjęcia.
-- Zmierz położenie obiektu na zdjęciu, zanim podasz liczby. Linia obok obiektu jest gorsza
-  niż jej brak.
-- Jedna linia to łamana: dla prostej wystarczą 2 punkty, dla łuku daj 8-20 punktów,
-  dla owalu 16-24 punkty i domknij go (ostatni punkt równy pierwszemu).
-- Krok ma zwykle jedną linię. Najwyżej 4, gdy rzecz jest z natury wielokrotna
-  (np. para symetrycznych osi).
-- Krok konstrukcyjny też ma linie: oś symetrii to odcinek, bryła to prostokąt albo owal.
+JAK CZYTAĆ LISTĘ
+- "box" to ramka konturu w ułamkach zdjęcia: [lewa, góra, prawa, dół], gdzie 0 to lewa/górna
+  krawędź zdjęcia, a 1 prawa/dolna. Po ramce poznajesz, której części obiektu dotyczy kontur.
+- "len" to długość konturu w ułamku przekątnej zdjęcia. Duże "len" to główny kształt.
+- "closed": true to kontur zamknięty, czyli owal albo obrys.
 
 TEKST
-Tytuł: 2-5 słów. Opis: jedno zdanie mówiące, czym poprowadzić rękę i na co uważać
-(np. "Jednym ruchem od góry w dół, nie odrywając ręki"). Po polsku.`
+Tytuł: 2-5 słów, nazwij rzecz po imieniu, patrząc na zdjęcie ("Elipsa otworu kubka",
+a nie "Kontur 3"). Opis: jedno zdanie, jak poprowadzić rękę. Po polsku.`
 
-// Structured outputs: API gwarantuje JSON zgodny ze schematem — bez wyciągania go regexem z tekstu.
-const POINT_SCHEMA = {
+const CONTOUR_PLAN_SCHEMA = {
   type: 'object',
   properties: {
-    x: { type: 'number' },
-    y: { type: 'number' },
-  },
-  required: ['x', 'y'],
-  additionalProperties: false,
-}
-
-const IMAGE_STEPS_SCHEMA = {
-  type: 'object',
-  properties: {
-    // Pole celowo przed `steps`: model generuje po kolei, więc spis powstaje pierwszy
-    // i dalej ma już własną listę do odhaczenia. Bez tego Haiku dawał 6 kroków na portret,
-    // niezależnie od tego, o ile prosił prompt.
-    parts: { type: 'array', items: { type: 'string' } },
     steps: {
       type: 'array',
       items: {
@@ -234,80 +245,46 @@ const IMAGE_STEPS_SCHEMA = {
         properties: {
           title: { type: 'string' },
           description: { type: 'string' },
-          strokes: {
-            type: 'array',
-            items: {
-              type: 'object',
-              properties: { points: { type: 'array', items: POINT_SCHEMA } },
-              required: ['points'],
-              additionalProperties: false,
-            },
-          },
+          contours: { type: 'array', items: { type: 'number' } },
         },
-        required: ['title', 'description', 'strokes'],
+        required: ['title', 'description', 'contours'],
         additionalProperties: false,
       },
     },
+    // Przed krokami: model najpierw nazywa obiekt, potem wybiera tylko jego kontury.
+    subject: { type: 'string' },
   },
-  required: ['parts', 'steps'],
+  required: ['subject', 'steps'],
   additionalProperties: false,
 }
 
-const MAX_STEPS = 30
-const MAX_STROKES_PER_STEP = 4
-const MAX_POINTS_PER_STROKE = 64
-
-type GuidePoint = { x: number; y: number }
-type ImageStep = { title: string; description: string; strokes: { points: GuidePoint[] }[] }
+type ContourStep = { title: string; description: string; contours: number[] }
 
 /**
- * Współrzędne z modelu to dane z zewnątrz: przycinamy do kadru i odrzucamy linie, które
- * nie są linią (mniej niż 2 punkty). Krok bez sensownych linii zostaje — nadal niesie
- * tytuł i opis, a brak podpowiedzi jest lepszy niż podpowiedź w losowym miejscu.
+ * Plan modelu jest propozycją, nie prawdą: kontur przypisany dwa razy albo numer spoza
+ * listy psułby kurs. Bierzemy każdy kontur najwyżej raz. Kontury pominięte przez model to tło
+ * — zostają poza kursem, bo rysujemy tylko główny obiekt.
  */
-function cleanStrokes(strokes: unknown): { points: GuidePoint[] }[] {
-  if (!Array.isArray(strokes)) return []
-  return strokes
-    .slice(0, MAX_STROKES_PER_STEP)
-    .map((stroke) => {
-      const points = Array.isArray(stroke?.points) ? stroke.points : []
-      return {
-        points: points
-          .slice(0, MAX_POINTS_PER_STROKE)
-          .filter((point: unknown): point is GuidePoint => {
-            const p = point as Partial<GuidePoint>
-            return Number.isFinite(p?.x) && Number.isFinite(p?.y)
-          })
-          .map((point: GuidePoint) => ({
-            x: Math.min(1, Math.max(0, point.x)),
-            y: Math.min(1, Math.max(0, point.y)),
-          })),
-      }
-    })
-    .filter((stroke) => stroke.points.length >= 2)
-}
-
-function parseSteps(message: Anthropic.Message): ImageStep[] {
+function planContourSteps(message: Anthropic.Message, available: number[]): ContourStep[] {
   assertNotRefused(message)
-  // Schemat gwarantuje poprawność tylko pełnej odpowiedzi — po max_tokens JSON jest urwany.
   if (message.stop_reason === 'max_tokens') {
     throw new HttpError(502, 'Plan rysowania okazał się za długi. Spróbuj jeszcze raz.', 'truncated')
   }
-  // `parts` to spis, który model robi przed krokami — wymusza jeden krok na element.
-  // Klientowi nie jest potrzebny, liczy się to, że istniał w odpowiedzi.
-  const { steps } = JSON.parse(textOf(message)) as { steps: ImageStep[] }
-  const valid = steps
-    .filter((step) => step.title?.trim() && step.description?.trim())
-    .slice(0, MAX_STEPS)
-    .map((step) => ({
-      title: step.title.trim(),
-      description: step.description.trim(),
-      strokes: cleanStrokes(step.strokes),
-    }))
-  if (valid.length === 0) {
+  const { steps } = JSON.parse(textOf(message)) as { steps: ContourStep[] }
+
+  const left = new Set(available)
+  const planned: ContourStep[] = []
+  for (const step of steps) {
+    if (!step?.title?.trim() || !step?.description?.trim()) continue
+    const taken = (Array.isArray(step.contours) ? step.contours : []).filter((index) => left.delete(index))
+    if (taken.length === 0) continue
+    planned.push({ title: step.title.trim(), description: step.description.trim(), contours: taken })
+  }
+
+  if (planned.length === 0) {
     throw new HttpError(502, 'AI nie przygotowało planu dla tego zdjęcia. Spróbuj innego.', 'empty')
   }
-  return valid
+  return planned
 }
 
 function imageStepPrompt(title: string, description: string): string {
@@ -375,26 +352,6 @@ function parseStrokeComment(message: Anthropic.Message): StrokeComment {
 
 async function handle(client: Anthropic, body: AiRequest): Promise<unknown> {
   switch (body.action) {
-    case 'image-steps': {
-      assertImagePayload(body.image, 'image')
-      const message = await client.messages.create({
-        model: MODEL,
-        // Kroki niosą teraz łamane, nie same zdania: 30 kroków po kilkanaście punktów
-        // nie zmieściłoby się w 2048 tokenach i odpowiedź ucinałaby się w połowie JSON-a.
-        max_tokens: 16000,
-        thinking: NO_THINKING,
-        output_config: { format: { type: 'json_schema', schema: IMAGE_STEPS_SCHEMA } },
-        messages: [{
-          role: 'user',
-          content: [
-            { type: 'image', source: { type: 'base64', media_type: body.image.mediaType, data: body.image.data } },
-            { type: 'text', text: IMAGE_STEPS_PROMPT },
-          ],
-        }],
-      })
-      return { steps: parseSteps(message) }
-    }
-
     case 'analyze-image-step': {
       assertImagePayload(body.referenceImage, 'referenceImage')
       assertImage(body.drawingImage, 'drawingImage')
@@ -421,6 +378,30 @@ async function handle(client: Anthropic, body: AiRequest): Promise<unknown> {
         }],
       })
       return { text: completeSentences(message) }
+    }
+
+    case 'plan-contours': {
+      assertImagePayload(body.image, 'image')
+      assertContours(body.contours)
+      const list = body.contours
+        .map((c) => `${c.i}: box=[${c.box.map((n) => n.toFixed(2)).join(', ')}] len=${c.len.toFixed(3)} closed=${c.closed}`)
+        .join(String.fromCharCode(10))
+      const message = await client.messages.create({
+        model: MODEL,
+        // Sam plan: tytuły, opisy i numery. Bez geometrii mieści się w ułamku tego,
+        // czego wymagało dyktowanie współrzędnych przez model.
+        max_tokens: 4000,
+        thinking: NO_THINKING,
+        output_config: { format: { type: 'json_schema', schema: CONTOUR_PLAN_SCHEMA } },
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type: body.image.mediaType, data: body.image.data } },
+            { type: 'text', text: CONTOUR_PLAN_PROMPT + String.fromCharCode(10, 10) + 'KONTURY:' + String.fromCharCode(10) + list },
+          ],
+        }],
+      })
+      return { steps: planContourSteps(message, body.contours.map((c) => c.i)) }
     }
 
     case 'analyze-stroke': {

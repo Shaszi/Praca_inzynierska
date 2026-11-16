@@ -1,12 +1,19 @@
 import { Link } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { progressService, type PracticeAttempt, type PracticeSessionSummary } from '../services/progressService'
+import { DeleteSession } from './DeleteSession'
 import { ShareAsReference } from './ShareAsReference'
 import { StrokeThumbnail } from './StrokeThumbnail'
 
 const dateFormat = new Intl.DateTimeFormat('pl-PL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
 
-export function SessionGrid({ sessions }: { sessions: PracticeSessionSummary[] }) {
+export function SessionGrid({
+  sessions,
+  onDelete,
+}: {
+  sessions: PracticeSessionSummary[]
+  onDelete: (session: PracticeSessionSummary) => Promise<void>
+}) {
   const [openId, setOpenId] = useState<string | null>(null)
 
   return (
@@ -17,6 +24,7 @@ export function SessionGrid({ sessions }: { sessions: PracticeSessionSummary[] }
           session={session}
           isOpen={openId === session.id}
           onToggle={() => setOpenId((current) => (current === session.id ? null : session.id))}
+          onDelete={() => onDelete(session)}
         />
       ))}
     </ul>
@@ -27,10 +35,12 @@ function SessionCard({
   session,
   isOpen,
   onToggle,
+  onDelete,
 }: {
   session: PracticeSessionSummary
   isOpen: boolean
   onToggle: () => void
+  onDelete: () => Promise<void>
 }) {
   return (
     <li
@@ -80,6 +90,10 @@ function SessionCard({
           <ShareAsReference title={session.title} strokes={session.finalStrokes} />
         </div>
       ) : null}
+
+      <div className="border-t border-line px-3 py-2.5">
+        <DeleteSession onDelete={onDelete} />
+      </div>
 
       {isOpen && <AttemptList sessionId={session.id} />}
     </li>

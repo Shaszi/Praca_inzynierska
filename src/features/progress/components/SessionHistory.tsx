@@ -9,6 +9,7 @@ export function SessionHistory() {
   const [page, setPage] = useState(0)
   const [result, setResult] = useState<{ page: number; sessions: PracticeSessionSummary[]; total: number } | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [reloadToken, setReloadToken] = useState(0)
 
   useEffect(() => {
     let cancelled = false
@@ -16,6 +17,11 @@ export function SessionHistory() {
       .getSessionsPage(page, PAGE_SIZE)
       .then((loaded) => {
         if (cancelled) return
+        // Usunięcie ostatniego rysunku na stronie: wracamy na poprzednią, zamiast pokazywać pustą.
+        if (loaded.sessions.length === 0 && page > 0) {
+          setPage(page - 1)
+          return
+        }
         setResult({ page, ...loaded })
         setError(null)
       })
@@ -25,7 +31,7 @@ export function SessionHistory() {
     return () => {
       cancelled = true
     }
-  }, [page])
+  }, [page, reloadToken])
 
   if (error) return <p className="rounded-[16px] bg-danger-soft px-3.5 py-3 text-sm font-medium text-danger">{error}</p>
   if (!result) return <Spinner className="mx-auto h-6 w-6" />
@@ -37,12 +43,17 @@ export function SessionHistory() {
     )
   }
 
+  const remove = async (session: PracticeSessionSummary) => {
+    await progressService.deleteProject(session.id, session.photoPath)
+    setReloadToken((token) => token + 1)
+  }
+
   const pages = Math.ceil(result.total / PAGE_SIZE)
   const isLoading = result.page !== page
 
   return (
     <div className={`flex flex-col gap-4 ${isLoading ? 'opacity-60' : ''}`}>
-      <SessionGrid key={result.page} sessions={result.sessions} />
+      <SessionGrid key={result.page} sessions={result.sessions} onDelete={remove} />
       {pages > 1 && (
         <nav aria-label="Strony historii" className="flex items-center justify-center gap-3">
           <Button size="sm" disabled={page === 0 || isLoading} onClick={() => setPage(page - 1)}>

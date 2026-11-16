@@ -1,10 +1,5 @@
 import { useMemo } from 'react'
 
-/**
- * Kontekst 2D nie przyjmuje klas Tailwinda ani zmiennych CSS — potrzebuje konkretnego
- * koloru. Dlatego kolory płótna czytamy z tych samych tokenów, których używa interfejs,
- * zamiast powielać je jako literalne hexy, które rozjeżdżają się przy zmianie palety.
- */
 export function readCssColor(variable: string, fallback: string): string {
   if (typeof window === 'undefined' || typeof document === 'undefined') return fallback
   const value = getComputedStyle(document.documentElement).getPropertyValue(variable).trim()
@@ -21,7 +16,6 @@ export type CanvasColors = {
   violet: string
 }
 
-/** Projekt jest jednomotywowy, więc tokeny czytamy raz — nie ma zmiany, która by to unieważniła. */
 export function useCanvasColors(): CanvasColors {
   return useMemo(
     () => ({

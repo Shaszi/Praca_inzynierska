@@ -2,13 +2,11 @@ import { describe, expect, it } from 'vitest'
 import type { Point, Stroke } from '../../../types/drawing'
 import { evaluateStroke, liveProgress } from './strokeEvaluation'
 
-// Wzorzec: pozioma linia 500 px, jak zapisana w edytorze (punkty co 3 px).
 const reference: Stroke = {
   brushSize: 5,
   points: Array.from({ length: 168 }, (_, i) => ({ x: 100 + i * 3, y: 300, timestamp: i })),
 }
 
-/** Kreska użytkownika wzdłuż funkcji y(t), t ∈ [0, 1], rysowana z prędkością `speed` px/s. */
 function drawn(y: (t: number) => number, opts: { from?: number; to?: number; speed?: number; jitter?: (t: number) => number } = {}) {
   const { from = 0, to = 1, speed = 400, jitter = () => 0 } = opts
   const points: Point[] = []

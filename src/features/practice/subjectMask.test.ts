@@ -4,7 +4,6 @@ import { isolateSubject, maskContains, maskCoverage, maskFromCategory, polygonMa
 
 describe('maskFromCategory', () => {
   it('bierze jako obiekt wartość pod punktem stuknięcia', () => {
-    // 4×1: dwie lewe komórki to kategoria 7, prawe to 0.
     const mask = maskFromCategory(new Uint8Array([7, 7, 0, 0]), 4, 1, 0, 0.5)
     expect([...mask.data]).toEqual([1, 1, 0, 0])
     expect(maskCoverage(mask)).toBe(0.5)
@@ -27,10 +26,9 @@ describe('isolateSubject', () => {
         }
       }
     }
-    paint(10, 10, 50, 50) // obiekt
-    paint(75, 70, 110, 110) // coś w tle
+    paint(10, 10, 50, 50)
+    paint(75, 70, 110, 110)
 
-    // Maska w połowie rozdzielczości: obiekt to lewy górny kwadrat.
     const mask = { data: new Uint8Array(60 * 60), width: 60, height: 60 }
     for (let y = 3; y < 27; y++) for (let x = 3; x < 27; x++) mask.data[y * 60 + x] = 1
 
@@ -72,14 +70,13 @@ describe('polygonMask', () => {
         }
       }
     }
-    paint(20, 20, 60, 60) // obiekt w pętli
-    paint(110, 20, 150, 60) // coś obok, poza pętlą
+    paint(20, 20, 60, 60)
+    paint(110, 20, 150, 60)
 
     const lasso = polygonMask([{ x: 8, y: 8 }, { x: 75, y: 8 }, { x: 75, y: 75 }, { x: 8, y: 75 }], width, height)
     const contours = extractContours(pixels, width, height, { keep: maskContains(lasso, width, height) })
 
     expect(contours.length).toBeGreaterThan(0)
-    // Nic spoza pętli i nic na samej pętli — wszystkie punkty przy obiekcie 20..60.
     expect(contours.every((c) => c.every((p) => p.x > 12 && p.x < 70 && p.y > 12 && p.y < 70))).toBe(true)
   })
 })

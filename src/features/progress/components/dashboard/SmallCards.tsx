@@ -10,7 +10,6 @@ import type { BadgeState } from '../../utils/streakRewards'
 const ghostButton =
   'inline-flex min-h-10 items-center justify-center self-start rounded-full border-2 border-ink-faint px-4 text-sm font-bold text-ink transition hover:border-ink'
 
-/** Wspólna oprawa małych kart pulpitu: tytuł i treść. */
 function Card({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="flex flex-col gap-3.5 rounded-[22px] border border-line bg-surface p-[18px] lg:col-span-4">
@@ -79,8 +78,6 @@ export function ContinueCard({ session }: { session: PracticeSessionSummary | nu
   )
 }
 
-// Ilustracje do wbudowanych rozgrzewek. Same ćwiczenia (nazwa, czas, kreski) żyją
-// w features/practice/warmups.ts — pulpit tylko do nich linkuje.
 const WARMUP_ART: Record<string, ReactNode> = {
   'warmup-lines': (
     <svg viewBox="0 0 40 40" fill="none" stroke="#4fd2ff" strokeWidth="2.4" strokeLinecap="round" aria-hidden>

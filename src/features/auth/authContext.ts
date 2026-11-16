@@ -6,10 +6,8 @@ export type AuthContextValue = {
   session: Session | null
   user: User | null
   isLoading: boolean
-  /** Niepuste, gdy nie udało się sprawdzić sesji — strażnik tras pokazuje wtedy ekran błędu. */
   error: string | null
   roles: Role[]
-  /** Administrator spełnia każdą rolę. Gatuje tylko nawigację — baza sprawdza ponownie. */
   hasRole: (role: Role) => boolean
   signOut: () => Promise<void>
 }

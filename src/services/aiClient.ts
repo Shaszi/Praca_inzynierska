@@ -1,7 +1,6 @@
 import { FunctionsHttpError } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
 
-/** Błąd z Edge Function — `message` jest już gotowym komunikatem dla użytkownika. */
 export class AiError extends Error {
   readonly code: string
 
@@ -11,12 +10,10 @@ export class AiError extends Error {
   }
 }
 
-// Wszystkie wywołania modelu idą przez Edge Function "ai" — klucz API nie trafia do przeglądarki.
 export async function invokeAi<T>(body: Record<string, unknown>, signal?: AbortSignal): Promise<T> {
   const { data, error } = await supabase.functions.invoke<T>('ai', { body, signal })
 
   if (error) {
-    // Przerwane żądanie nie jest awarią — wynik po prostu nikogo już nie interesuje.
     if (signal?.aborted) throw new AiError('Analiza przerwana.', 'aborted')
     if (error instanceof FunctionsHttpError) {
       const payload = (await error.context.json().catch(() => null)) as { error?: string; code?: string } | null

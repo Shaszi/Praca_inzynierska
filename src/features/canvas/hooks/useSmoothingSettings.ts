@@ -17,7 +17,6 @@ function loadSettings(): SmoothingSettings {
   return DEFAULT_SMOOTHING
 }
 
-// Smoothing is a personal preference, so it is shared by all drawing pages and remembered
 export function useSmoothingSettings() {
   const [smoothing, setSmoothingState] = useState<SmoothingSettings>(loadSettings)
 

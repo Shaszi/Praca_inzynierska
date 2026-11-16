@@ -7,7 +7,6 @@ function initials(label: string): string {
   return (parts[0][0] + (parts[1]?.[0] ?? '')).toUpperCase()
 }
 
-/** Kółko z inicjałami użytkownika. */
 export function UserAvatar({ name, size = 'h-9 w-9 text-sm' }: { name: string; size?: string }) {
   return (
     <span
@@ -43,10 +42,6 @@ export function StreakChip() {
   )
 }
 
-/**
- * Rola użytkownika. Administrator na cytrynowo, moderator na fioletowo,
- * zwykły użytkownik na spokojnie — kolor niesie hierarchię bez czytania napisu.
- */
 export function RoleBadge({ roles }: { roles: Role[] }) {
   const label = roleLabel(roles)
   const tone = roles.includes('admin')

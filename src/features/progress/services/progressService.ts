@@ -16,9 +16,7 @@ export type PracticeMode = 'reference' | 'image'
 export type PracticeAttempt = {
   stepIndex: number
   score: number | null
-  /** Komentarz algorytmu. */
   feedback: string | null
-  /** Komentarz modelu AI. */
   aiFeedback: string | null
   createdAt: string
 }
@@ -36,7 +34,6 @@ export type ImageProject = {
 
 export type PracticeSessionSummary = {
   id: string
-  /** Niepuste = projekt ze zdjęciem, do którego można wrócić. */
   photoPath: string | null
   mode: PracticeMode
   title: string
@@ -121,7 +118,6 @@ export const progressService = {
     title: string
     stepsTotal: number
     referenceId?: string | null
-    /** Tryb ze zdjęcia: ścieżka pliku w Storage i plan kursu, żeby dało się tu wrócić. */
     photoPath?: string | null
     course?: unknown[] | null
   }): Promise<string> {
@@ -146,9 +142,7 @@ export const progressService = {
     stepIndex: number
     stroke: Stroke
     score: number | null
-    /** Komentarz modelu AI (tryb zdjęcia). */
     aiFeedback?: string | null
-    /** Komentarz z algorytmicznej oceny kreski (tryb wzorca). */
     feedback?: string | null
     metrics?: Record<string, unknown> | null
   }): Promise<void> {
@@ -167,10 +161,6 @@ export const progressService = {
     if (error) fail('Nie udało się zapisać próby', error)
   },
 
-  /**
-   * Projekty ze zdjęcia, też nieukończone — `listSessions` pokazuje wyłącznie skończone
-   * rysunki, więc projekt w toku nie miałby się gdzie pojawić.
-   */
   async listImageProjects(limit = 12): Promise<ImageProject[]> {
     const { data, error } = await supabase
       .from('practice_sessions')
@@ -192,10 +182,6 @@ export const progressService = {
     }))
   },
 
-  /**
-   * Zapis w trakcie, nie tylko na koniec: bez tego powrót do projektu wracałby
-   * do pustego płótna na kroku pierwszym.
-   */
   async saveProgress(params: { sessionId: string; stepIndex: number; strokes: Stroke[] }): Promise<void> {
     const { error } = await supabase
       .from('practice_sessions')
@@ -208,7 +194,6 @@ export const progressService = {
     if (error) fail('Nie udało się zapisać postępu', error)
   },
 
-  /** Zmiana nazwy projektu. Baza przyjmuje 1–200 znaków, więc pilnujemy tego tutaj. */
   async renameProject(sessionId: string, title: string): Promise<string> {
     const clean = title.trim().slice(0, 200)
     if (!clean) throw new Error('Nazwa nie może być pusta.')
@@ -217,7 +202,6 @@ export const progressService = {
     return clean
   },
 
-  /** Projekt do wznowienia: kurs, zdjęcie, kreski i krok, na którym ćwiczący stanął. */
   async getProject(sessionId: string): Promise<{
     title: string
     photoPath: string | null
@@ -241,7 +225,6 @@ export const progressService = {
     }
   },
 
-  /** Historia kroków jednej sesji — to z niej ekran postępu pokazuje, co model napisał. */
   async getAttempts(sessionId: string): Promise<PracticeAttempt[]> {
     const { data, error } = await supabase
       .from('practice_attempts')
@@ -259,7 +242,6 @@ export const progressService = {
     }))
   },
 
-  /** Porzucona próba (powtórzenie kreski albo cofnięcie kroku) nie ma prawa zostać w historii. */
   async deleteAttempts(sessionId: string, stepIndex: number): Promise<void> {
     const { error } = await supabase
       .from('practice_attempts')

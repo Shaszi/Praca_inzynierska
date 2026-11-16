@@ -8,7 +8,6 @@ const stroke = (points: [number, number][]) => ({
   points: points.map(([x, y]) => ({ x, y, timestamp: 0 })),
 })
 
-/** Odwzorowanie rysunek → ekran, czyli to, co robi transformacja kontekstu 2D. */
 const toScreen = (x: number, y: number, view: CanvasView) => ({
   clientX: x * view.scale + view.offsetX + bounds.left,
   clientY: y * view.scale + view.offsetY + bounds.top,
@@ -24,7 +23,6 @@ describe('createPointFromPointerEvent', () => {
 
   it('odwraca przybliżenie, więc punkt trafia we współrzędne rysunku', () => {
     const view: CanvasView = { scale: 2, offsetX: 0, offsetY: 0 }
-    // Ekran 230,250 → płótno 200,200 → rysunek 100,100
     const point = createPointFromPointerEvent(sample(230, 250), bounds, view)
     expect(point.x).toBe(100)
     expect(point.y).toBe(100)
@@ -37,9 +35,6 @@ describe('createPointFromPointerEvent', () => {
     expect(point.y).toBe(92.5)
   })
 
-  // To jest niezmiennik chroniący ocenę kreski: ten sam ruch ręki musi dać te same
-  // współrzędne rysunku niezależnie od przybliżenia, bo evaluateStroke porównuje
-  // kreskę ze wzorcem w jednym układzie.
   it('ten sam punkt rysunku wychodzi tak samo przy każdym przybliżeniu', () => {
     const views: CanvasView[] = [
       IDENTITY_VIEW,
@@ -93,7 +88,6 @@ describe('fitView', () => {
     const height = 500
     const view = fitView(box, width, height, 28, LIMITS)
 
-    // Skala jest ciaśniejsza z dwóch osi, więc wzorzec mieści się w całości.
     const left = box.minX * view.scale + view.offsetX
     const right = box.maxX * view.scale + view.offsetX
     const top = box.minY * view.scale + view.offsetY
@@ -103,7 +97,6 @@ describe('fitView', () => {
     expect(top).toBeGreaterThanOrEqual(28 - 0.001)
     expect(bottom).toBeLessThanOrEqual(height - 28 + 0.001)
 
-    // Wyśrodkowanie: tyle samo miejsca z lewej co z prawej, z góry co z dołu.
     expect(left).toBeCloseTo(width - right, 6)
     expect(top).toBeCloseTo(height - bottom, 6)
   })
@@ -116,9 +109,7 @@ describe('fitView', () => {
   })
 
   it('trzyma się granic skali', () => {
-    // Punktowy wzorzec chciałby skali setek — przycinamy do maksimum płótna.
     expect(fitView({ minX: 0, minY: 0, maxX: 1, maxY: 1 }, 1000, 800, 28, LIMITS).scale).toBe(6)
-    // Ogromny wzorzec nie może zejść poniżej minimum.
     expect(fitView({ minX: 0, minY: 0, maxX: 90000, maxY: 90000 }, 1000, 800, 28, LIMITS).scale).toBe(0.5)
   })
 
@@ -126,7 +117,6 @@ describe('fitView', () => {
     const box = { minX: 70, minY: 70, maxX: 550, maxY: 340 }
     const view = fitView(box, 1000, 500, 28, LIMITS)
     const drawing = { x: 231, y: 184 }
-    // Tam, gdzie ten punkt wzorca ląduje na ekranie, użytkownik stawia kursor...
     const screen = { x: drawing.x * view.scale + view.offsetX, y: drawing.y * view.scale + view.offsetY }
     const origin = { left: 0, top: 0 } as DOMRect
     const back = createPointFromPointerEvent(
@@ -134,7 +124,6 @@ describe('fitView', () => {
       origin,
       view,
     )
-    // ...a zapisuje się dokładnie ten sam punkt wzorca, więc ocena porównuje to samo.
     expect(back.x).toBeCloseTo(drawing.x, 6)
     expect(back.y).toBeCloseTo(drawing.y, 6)
   })

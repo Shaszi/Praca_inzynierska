@@ -76,7 +76,6 @@ describe('computeStreaks', () => {
 
 describe('buildCalendar', () => {
   it('układa tygodnie od poniedziałku i oznacza dni przyszłe', () => {
-    // 2026-03-11 to środa
     const calendar = buildCalendar(activity('2026-03-10'), '2026-03-11', 2)
     expect(calendar).toHaveLength(2)
     expect(calendar[0][0].day).toBe('2026-03-02')

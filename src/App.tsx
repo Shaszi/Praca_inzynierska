@@ -44,7 +44,6 @@ const router = createBrowserRouter([
       },
     ],
   },
-  // Stare adresy sprzed podziału na stronę publiczną i aplikację.
   { path: '/practice', element: <Navigate to="/app/practice" replace /> },
   { path: '/practice/image', element: <Navigate to="/app/practice/image" replace /> },
   { path: '/teacher', element: <Navigate to="/app/references" replace /> },

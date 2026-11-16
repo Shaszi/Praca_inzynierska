@@ -2,11 +2,6 @@ import { useRef, useState, type PointerEvent } from 'react'
 
 type Point = { x: number; y: number }
 
-/**
- * Warstwa nad zdjęciem do obrysowania obiektu palcem albo myszą. Punkty są w pikselach
- * zdjęcia (viewBox = rozmiar własny), więc nie zależą od tego, jak duże jest zdjęcie na ekranie.
- * Po puszczeniu pętla się domyka; gotowa pętla zostaje podświetlona.
- */
 export function LassoSurface({
   width,
   height,
@@ -15,13 +10,11 @@ export function LassoSurface({
 }: {
   width: number
   height: number
-  /** Gotowa pętla do podświetlenia; null = jeszcze nic nie zaznaczono. */
   loop: Point[] | null
   onComplete: (points: Point[]) => void
 }) {
   const [draft, setDraft] = useState<Point[] | null>(null)
   const draftRef = useRef<Point[]>([])
-  // Co ~0,4% szerokości nowy punkt — gęściej nic nie daje, a pętla rośnie w tysiące punktów.
   const step = Math.max(width, height) * 0.004
 
   const toImage = (event: PointerEvent<SVGSVGElement>): Point => {
@@ -68,7 +61,6 @@ export function LassoSurface({
       {shown && shown.length > 1 && (
         <polygon
           points={path}
-          // W trakcie rysowania sama linia; po domknięciu — podświetlone wnętrze.
           fill={draft ? 'none' : 'rgb(62 230 168 / 0.35)'}
           stroke="#3ee6a8"
           strokeWidth={stroke}

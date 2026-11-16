@@ -1,7 +1,6 @@
 import { Link } from 'react-router-dom'
 import { Button } from '../../../../components/ui'
 
-/** Pasek pod kanwą po ostatniej kresce wzorca. */
 export function CompletedBanner({ onRestart }: { onRestart: () => void }) {
   return (
     <section className="flex flex-col gap-3 rounded-[18px] border border-success/30 bg-success-soft px-4 py-3.5 sm:flex-row sm:items-center">

@@ -15,12 +15,6 @@ type UseReferenceGuideResult = {
   refreshReferences: () => void
 }
 
-/**
- * Jedna lista wzorców do wyboru: wbudowane rozgrzewki, wzorzec wczytany z pliku
- * (jeśli przyszedł z biblioteki) i to, co oddała baza. Id decyduje o tożsamości —
- * plik z dysku może nosić id wiersza, który już jest w bazie, a dwie opcje `<select>`
- * o tym samym `value` dają niewybieralną pozycję.
- */
 export function mergeReferences(
   local: ReferenceDrawing | null,
   loaded: ReferenceDrawing[],
@@ -35,11 +29,9 @@ export function mergeReferences(
 export function useReferenceGuide(): UseReferenceGuideResult {
   const [searchParams] = useSearchParams()
   const { state } = useLocation()
-  // Plik z dysku nie trafia do bazy — biblioteka podaje go w stanie nawigacji.
   const localReference = (state as { localReference?: ReferenceDrawing } | null)?.localReference ?? null
 
   const [loaded, setLoaded] = useState<ReferenceDrawing[]>([])
-  // `?ref=` ustawia wybór przy wejściu: tak linkuje biblioteka i kafelki rozgrzewek.
   const [selectedReferenceId, setSelectedReferenceId] = useState(
     () => localReference?.id ?? searchParams.get('ref') ?? '',
   )
@@ -60,12 +52,8 @@ export function useReferenceGuide(): UseReferenceGuideResult {
     }
   }, [reloadToken])
 
-  // Rozgrzewki są na liście od pierwszego renderu, jeszcze zanim baza odpowie.
   const references = useMemo(() => mergeReferences(localReference, loaded), [localReference, loaded])
 
-  // Wybór, którego nie ma na liście (wzorzec usunięty albo cofnięty z publikacji),
-  // po prostu nie znajdzie wzorca — strona pokazuje wtedy prośbę o wybór. Nie ma
-  // potrzeby czyścić id w efekcie.
   const selectedReference = useMemo(
     () => references.find((reference) => reference.id === selectedReferenceId) ?? null,
     [references, selectedReferenceId],

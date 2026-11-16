@@ -1,7 +1,6 @@
 import { contrastRatio } from '../../../utils/contrast'
 import { BRUSH_SWATCHES, type BrushSettings } from '../hooks/useBrushSettings'
 
-/** Poniżej tego kontrastu kreska zlewa się z kartką — projekt każe wtedy ostrzec. */
 const MIN_VISIBLE_CONTRAST = 1.6
 
 export function BrushPanel({
@@ -12,7 +11,6 @@ export function BrushPanel({
 }: {
   brush: BrushSettings
   onChange: (next: BrushSettings) => void
-  /** Kolor kartki, żeby dało się ostrzec, gdy pędzel na niej znika. */
   canvasBackground: string
   id?: string
 }) {
@@ -55,7 +53,6 @@ export function BrushPanel({
               onClick={() => onChange({ ...brush, color: swatch.color })}
               className={[
                 'block aspect-square w-full rounded-full border-2 p-0',
-                // Grafit na ciemnej karcie potrzebuje jaśniejszej ramki, żeby był widoczny.
                 swatch.color === '#1a1236' ? 'border-[#6f68a8]' : 'border-line-strong',
                 brush.color.toLowerCase() === swatch.color.toLowerCase()
                   ? 'shadow-[0_0_0_3px_var(--color-surface),0_0_0_5px_var(--color-ink)]'

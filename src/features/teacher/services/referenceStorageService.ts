@@ -5,11 +5,6 @@ import { normalizeReference } from '../utils/referenceValidation'
 import { cloneStrokes } from '../../../utils/strokes'
 import type { StorageResult } from './storageTypes'
 
-/**
- * `available` to brak zawężenia: baza oddaje dokładnie to, na co pozwala RLS, czyli
- * własne wzorce plus opublikowane. Tego potrzebuje ćwiczenie — `mine` ukrywało
- * cudzy opublikowany wzorzec, więc „Ćwicz" w bibliotece prowadziło donikąd.
- */
 export type LibraryFilter = 'mine' | 'public' | 'pending' | 'available'
 
 type Row = Tables<'drawing_references'>
@@ -18,11 +13,6 @@ function isPublication(value: string): value is Publication {
   return value === 'private' || value === 'pending' || value === 'public' || value === 'rejected'
 }
 
-/**
- * `normalizeReference` kopiuje po białej liście i celowo obcina wszystko poza
- * id/name/strokes/createdAt — to granica zaufania. Pola publikacji dokładamy więc
- * tutaj, z wiersza, który już przeszedł przez bazę.
- */
 function toReference(row: Row, currentUserId: string | null, authorNames?: Map<string, string>): ReferenceDrawing | null {
   const base = normalizeReference({
     id: row.id,
@@ -41,12 +31,6 @@ function toReference(row: Row, currentUserId: string | null, authorNames?: Map<s
   }
 }
 
-/**
- * Nazwy autorów osobnym zapytaniem, bo `drawing_references.user_id` wskazuje na
- * `auth.users`, a nie na `profiles` — PostgREST nie zna takiej relacji i nie zrobi
- * osadzonego joina. Dodanie drugiego klucza obcego dałoby nowy tryb awarii: brak
- * wiersza profilu blokowałby zapis wzorca.
- */
 async function loadAuthorNames(userIds: string[], currentId: string | null): Promise<Map<string, string>> {
   const foreign = [...new Set(userIds)].filter((id) => id !== currentId)
   if (foreign.length === 0) return new Map()
@@ -60,12 +44,7 @@ async function currentUserId(): Promise<string | null> {
   return data.session?.user.id ?? null
 }
 
-// Wzorce leżą w drawing_references; RLS decyduje, które wiersze klient w ogóle zobaczy.
 export const referenceStorageService = {
-  /**
-   * `filter` zawęża zapytanie, ale bezpieczeństwo trzyma RLS — zapytanie o 'pending'
-   * bez roli moderatora po prostu nie zwróci wierszy, zamiast zwrócić błąd.
-   */
   async loadReferences(filter: LibraryFilter = 'mine'): Promise<StorageResult<ReferenceDrawing[]>> {
     const userId = await currentUserId()
 
@@ -130,7 +109,6 @@ export const referenceStorageService = {
     return { data: null, error: null }
   },
 
-  /** Decyzja moderatora idzie przez RPC, bo kolumny publication klient nie może tknąć. */
   async moderate(id: string, approved: boolean, reason?: string): Promise<string | null> {
     const { error } = await supabase.rpc('moderate_reference', {
       p_reference_id: id,

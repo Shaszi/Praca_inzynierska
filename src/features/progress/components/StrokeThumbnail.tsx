@@ -4,7 +4,6 @@ import type { Stroke } from '../../../types/drawing'
 const SIZE = 100
 const PADDING = 8
 
-// Miniatura rysunku jako SVG, dopasowana do obrysu wszystkich kresek.
 export function StrokeThumbnail({ strokes, className = '' }: { strokes: Stroke[]; className?: string }) {
   const paths = useMemo(() => {
     const points = strokes.flatMap((stroke) => stroke.points)

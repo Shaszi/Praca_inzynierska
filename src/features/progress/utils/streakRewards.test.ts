@@ -28,7 +28,6 @@ describe('badgeStates', () => {
 
 describe('nextMilestone', () => {
   it('liczy postęp od poprzedniego progu, nie od zera', () => {
-    // Między 3 i 7 dniami rozpiętość to 4 dni; 5 dni = 2 z 4 = 50%.
     const milestone = nextMilestone(5)!
     expect(milestone.name).toBe('Tydzień w ogniu')
     expect(milestone.daysLeft).toBe(2)

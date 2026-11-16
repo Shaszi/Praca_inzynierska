@@ -1,7 +1,5 @@
 import type { ButtonHTMLAttributes, ReactNode } from 'react'
 
-// Wspólne elementy interfejsu, żeby wszystkie ekrany wyglądały spójnie.
-
 type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger'
 type ButtonSize = 'sm' | 'md'
 
@@ -30,7 +28,6 @@ export function Button({
     <button
       type="button"
       className={[
-        // Pastylka i dociśnięcie przy kliknięciu — tak jak w projekcie.
         'inline-flex items-center justify-center gap-2 rounded-full font-bold transition active:scale-[0.97]',
         'disabled:pointer-events-none disabled:opacity-40',
         variantClass[variant],
@@ -87,9 +84,6 @@ export function Divider() {
   return <span className="mx-1 hidden h-6 w-px bg-line sm:block" aria-hidden />
 }
 
-/** Mała etykieta sekcji (wersaliki), jak nagłówki kart w projekcie.
- *  `as` istnieje, bo część tych etykiet to prawdziwe nagłówki sekcji — jako <p>
- *  zniknęłyby ze struktury dokumentu dla czytnika ekranu. */
 export function Eyebrow({
   children,
   className = '',

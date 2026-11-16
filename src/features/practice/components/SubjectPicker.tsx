@@ -22,14 +22,8 @@ const HINTS: Record<PickMode, { title: string; body: string }> = {
   },
 }
 
-/** Kolor zaznaczenia — akcent aplikacji (#3ee6a8) z przezroczystością. */
 const TINT = [62, 230, 168, 120] as const
 
-/**
- * Krok przed kursem: użytkownik wskazuje, co chce rysować — stuknięciem (segmenter sam
- * znajduje sylwetkę) albo lassem (pętla palcem, gdy segmenter łapie nie to, co trzeba).
- * Kontury liczymy potem tylko z zaznaczenia, więc tło nie trafia do kursu.
- */
 export function SubjectPicker({
   imageUrl,
   image,
@@ -70,7 +64,6 @@ export function SubjectPicker({
     try {
       const next = await segmentAt(image, x, y)
       const coverage = maskCoverage(next)
-      // Prawie pusto albo prawie cały kadr — segmenter złapał szum albo tło, nie obiekt.
       if (coverage < 0.003 || coverage > 0.97) {
         setError('Nie udało się wyodrębnić obiektu. Stuknij bliżej jego środka.')
         return
@@ -93,7 +86,6 @@ export function SubjectPicker({
 
   const handleLasso = (points: { x: number; y: number }[]) => {
     const next = polygonMask(points, image.naturalWidth, image.naturalHeight)
-    // Kreska zamiast pętli albo pętla wokół całego zdjęcia — nic nie zaznacza.
     if (maskCoverage(next) < 0.01) {
       setError('Pętla jest za mała. Obrysuj cały obiekt jednym ruchem.')
       return

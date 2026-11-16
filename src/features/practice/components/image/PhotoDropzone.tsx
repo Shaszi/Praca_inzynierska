@@ -2,7 +2,6 @@ import { useRef, useState } from 'react'
 import { ImageIcon } from '../../../../components/icons'
 import { ACCEPTED_TYPES } from '../../utils/photoFile'
 
-/** Pole „przeciągnij albo kliknij” na zdjęcie. Oddaje plik, resztą zajmuje się strona. */
 export function PhotoDropzone({ onFile }: { onFile: (file: File) => void }) {
   const [isDragging, setIsDragging] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)

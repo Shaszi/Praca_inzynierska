@@ -36,7 +36,6 @@ function LockIcon({ locked }: { locked: boolean }) {
   )
 }
 
-/** Szachownica pod miniaturą — pokazuje, że warstwa jest przezroczysta. */
 const CHECKER = {
   backgroundColor: '#2b2662',
   backgroundImage: 'conic-gradient(#36317a 25%, transparent 0 50%, #36317a 0 75%, transparent 0)',
@@ -124,7 +123,6 @@ function LayerRow({
         </button>
       </div>
 
-      {/* Suwak, kolejność i usuwanie pojawiają się dopiero po wybraniu warstwy — reguła z projektu. */}
       {isActive && (
         <div className="flex flex-col gap-2.5 px-1 pt-2.5 pb-1">
           <label className="flex flex-col gap-1.5 text-[13px] text-ink-soft">
@@ -179,7 +177,6 @@ export function LayerPanel({
 }: {
   layers: Layer[]
   activeLayerId: string
-  /** Krycie wzorca — w projekcie „Wzorzec" jest zablokowaną warstwą na spodzie. */
   guideOpacity: number
   onGuideOpacity: (value: number) => void
   guideStrokes: Stroke[]
@@ -191,7 +188,6 @@ export function LayerPanel({
   onRemove: (id: string) => void
   onAdd: () => void
 }) {
-  // Od góry w panelu = od góry na kanwie, więc kolejność odwracamy.
   const ordered = [...layers].reverse()
 
   return (
@@ -220,7 +216,6 @@ export function LayerPanel({
           />
         ))}
 
-        {/* Wzorzec zawsze na spodzie, zablokowany, z własnym suwakiem przyciemnienia. */}
         <li className="rounded-[16px] border-2 border-transparent bg-paper-dim p-1.5">
           <div className="flex items-center gap-1.5">
             <span className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-[10px]" style={CHECKER}>

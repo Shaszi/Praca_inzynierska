@@ -1,11 +1,3 @@
-// Szczegółowa ocena kreski względem wzorca.
-//
-// Kreska jest porównywana ze wzorcem w układzie współrzędnych płótna (bez normalizacji),
-// więc przesunięcie, zły kąt czy za krótka linia obniżają wynik. Ocena jest liczona
-// osobno dla początku, środka i końca linii, a wynik zamieniany na krótki komentarz.
-//
-// Drżenie i zatrzymania mierzone są na surowych próbkach wskaźnika (przed stabilizacją),
-// bo wygładzona kreska ukrywa ruch ręki.
 
 import type { Point, Stroke } from '../../../types/drawing'
 
@@ -16,9 +8,7 @@ export type IssueKind = 'offset' | 'waver' | 'angle' | 'tremor' | 'pause'
 export type Issue = {
   kind: IssueKind
   level: Level
-  /** 0 = na granicy tolerancji, 1 = na progu "źle", >1 = gorzej. */
   severity: number
-  /** Krótka etykieta do interfejsu, np. "drży", "ucieka w górę". */
   label: string
   sentence: string
 }
@@ -35,7 +25,6 @@ export type SegmentReport = {
 
 export type StrokeEvaluation = {
   tooShort: boolean
-  /** 0–100 */
   score: number
   level: Level
   segments: SegmentReport[]
@@ -44,18 +33,14 @@ export type StrokeEvaluation = {
   endGapPx: number
   speedPxPerSec: number
   reversed: boolean
-  /** Punkt największego błędu (do zaznaczenia na płótnie), null gdy kreska jest dobra. */
   worstPoint: { x: number; y: number } | null
-  /** Krótki komentarz po polsku, maks. kilka zdań. */
   summary: string
 }
 
 type Vec = { x: number; y: number }
 
-// --- Progi ---------------------------------------------------------------
 
 const SAMPLES = 90
-// Kubełki pokrycia wzoru dla paska postępu: 48 daje krok ~2% i płynny ruch paska.
 const COVERAGE_BINS = 48
 const TREMOR_SPACING_PX = 2
 const TREMOR_WINDOW = 4
@@ -68,12 +53,10 @@ const ANGLE_GOOD = 7
 const ANGLE_BAD = 16
 const LENGTH_GOOD = 0.07
 const LENGTH_BAD = 0.18
-// Tempo jako czas na piksel: 8 ms/px = 125 px/s (pewny ruch), 20 ms/px = 50 px/s (wyrysowywanie)
 const SLOWNESS_GOOD = 8
 const SLOWNESS_BAD = 20
 
 const LEVEL_RANK: Record<Level, number> = { good: 0, warn: 1, bad: 2 }
-// Zły kąt jest zwykle skutkiem ucieczki od wzoru, więc ma najniższy priorytet w komentarzu.
 const ISSUE_PRIORITY: IssueKind[] = ['offset', 'waver', 'tremor', 'pause', 'angle']
 
 const SEGMENTS: { key: SegmentKey; name: string; short: string }[] = [
@@ -82,7 +65,6 @@ const SEGMENTS: { key: SegmentKey; name: string; short: string }[] = [
   { key: 'end', name: 'Koniec linii', short: 'koniec' },
 ]
 
-// --- Geometria -----------------------------------------------------------
 
 const dist = (a: Vec, b: Vec) => Math.hypot(a.x - b.x, a.y - b.y)
 
@@ -92,7 +74,6 @@ export function pathLength(points: Vec[]): number {
   return length
 }
 
-/** Równomierne próbkowanie wzdłuż długości łuku (n punktów, z końcami). */
 export function resampleCount(points: Vec[], n: number): Vec[] {
   const total = pathLength(points)
   if (points.length === 0) return []
@@ -124,7 +105,6 @@ function resampleSpacing(points: Vec[], spacing: number): Vec[] {
   return resampleCount(points, n)
 }
 
-/** beyondEnds: punkt leży za początkiem lub końcem wzoru (rzut "przyklejony" do skrajnego punktu). */
 type Nearest = { point: Vec; distance: number; segmentIndex: number; beyondEnds: boolean }
 
 function nearestOnPolyline(p: Vec, line: Vec[]): Nearest {
@@ -152,7 +132,6 @@ function angleBetween(u: Vec, v: Vec): number {
   return Math.abs(wrapped) * (180 / Math.PI)
 }
 
-// --- Oceny cząstkowe -----------------------------------------------------
 
 function grade(value: number, good: number, bad: number): { level: Level; score: number; severity: number } {
   const severity = (value - good) / (bad - good)
@@ -168,11 +147,6 @@ function directionWord(v: Vec): string {
   return v.x < 0 ? 'w lewo' : 'w prawo'
 }
 
-/**
- * Tercja kreski (0 = początek, 1 = środek, 2 = koniec) dla punktu surowego, liczona
- * po najbliższym punkcie wygładzonej kreski. Podział po długości surowej ścieżki byłby
- * błędny: drżący fragment jest dłuższy (zygzak) i "zabierałby" miejsce sąsiednim tercjom.
- */
 function thirdOf(p: Vec, smooth: Vec[]): number {
   let best = 0
   let bestDistance = Infinity
@@ -186,7 +160,6 @@ function thirdOf(p: Vec, smooth: Vec[]): number {
   return Math.min(2, Math.floor((best / smooth.length) * 3))
 }
 
-/** Średnie odchylenie od średniej kroczącej — miara drobnego drżenia, per tercja kreski. */
 function tremorByThird(raw: Vec[], smooth: Vec[]): number[] {
   const pts = resampleSpacing(raw, TREMOR_SPACING_PX)
   const sums = [0, 0, 0]
@@ -207,7 +180,6 @@ function tremorByThird(raw: Vec[], smooth: Vec[]): number[] {
   return sums.map((sum, i) => (counts[i] ? sum / counts[i] : 0))
 }
 
-/** Zatrzymania ruchu (ręka stoi > PAUSE_MS) przypisane do tercji kreski. */
 function pausesByThird(raw: Point[], smooth: Vec[]): number[] {
   const result = [0, 0, 0]
   if (raw.length < 3) return result
@@ -215,7 +187,6 @@ function pausesByThird(raw: Point[], smooth: Vec[]): number[] {
   let anchor = 0
   for (let i = 1; i < raw.length; i++) {
     if (dist(raw[anchor], raw[i]) <= PAUSE_MOVE_PX) continue
-    // Postój przed pierwszym ruchem nie jest błędem — to tylko przyłożenie ręki.
     if (anchor > 0 && raw[i].timestamp - raw[anchor].timestamp > PAUSE_MS) {
       result[thirdOf(raw[anchor], smooth)] += 1
     }
@@ -224,7 +195,6 @@ function pausesByThird(raw: Point[], smooth: Vec[]): number[] {
   return result
 }
 
-// --- Komentarz -----------------------------------------------------------
 
 function segmentIssues(
   name: string,
@@ -237,7 +207,6 @@ function segmentIssues(
   const px = Math.round(offset.px)
 
   if (offset.grade.level !== 'good') {
-    // Gdy punkty leżą raz po jednej, raz po drugiej stronie wzoru, średni wektor jest mały.
     const wavers = Math.hypot(offset.vector.x, offset.vector.y) < 0.5 * offset.px
     const dir = directionWord(offset.vector)
     const bad = offset.grade.level === 'bad'
@@ -317,9 +286,7 @@ function goodSegmentsSentence(good: (typeof SEGMENTS)[number][], hasOtherProblem
   return null
 }
 
-// --- API -----------------------------------------------------------------
 
-/** Tolerancja odchylenia od wzoru: rośnie z długością wzoru i grubością jego kreski. */
 function offsetTolerance(reference: Stroke, refLength: number): { good: number; bad: number } {
   const good = Math.max(5, reference.brushSize / 2 + 2, 0.02 * refLength)
   return { good, bad: Math.max(14, good * 2.2, 0.045 * refLength) }
@@ -348,7 +315,6 @@ export function evaluateStroke(user: Stroke, reference: Stroke, rawPoints?: Poin
     return TOO_SHORT
   }
 
-  // Kierunek: porównujemy w kolejności rysowania, więc "początek" to miejsce, gdzie ręka zaczęła.
   const r0 = reference.points[0]
   const rN = reference.points[reference.points.length - 1]
   const u0 = user.points[0]
@@ -360,7 +326,6 @@ export function evaluateStroke(user: Stroke, reference: Stroke, rawPoints?: Poin
   const U = resampleCount(user.points, SAMPLES)
   const R = resampleCount(refPoints, SAMPLES)
 
-  // Tolerancje zależą od długości wzoru i grubości jego kreski.
   const { good: offsetGood, bad: offsetBad } = offsetTolerance(reference, refLength)
   const gapGood = Math.max(10, 0.04 * refLength)
   const gapBad = Math.max(24, 0.1 * refLength)
@@ -387,7 +352,6 @@ export function evaluateStroke(user: Stroke, reference: Stroke, rawPoints?: Poin
     let counted = 0
     for (let i = from; i < to; i++) {
       const n = nearest[i]
-      // Przedłużenie poza koniec wzoru ocenia trafienie w punkty — tu liczyłoby się podwójnie.
       if (n.beyondEnds && !closed) continue
       counted += 1
       offsetSum += n.distance
@@ -425,10 +389,6 @@ export function evaluateStroke(user: Stroke, reference: Stroke, rawPoints?: Poin
     if (top && (!worst || top.severity > worst.severity)) worst = { severity: top.severity, point: localWorst.point }
   }
 
-  // --- Cała kreska ---
-  // Otwarta linia: jaką część wzoru kreska pokrywa (rzut na wzór). Drżenie nie wydłuża
-  // wyniku, a przedłużenie poza koniec wyłapuje ocena trafienia w punkty.
-  // Zamknięty kształt: zwykły stosunek długości (rzut nie ma tam początku ani końca).
   const along = nearest.map((n) => refCumulative[n.segmentIndex] + dist(R[n.segmentIndex], n.point))
   const lengthRatio = closed
     ? pathLength(resampleCount(user.points, 30)) / Math.max(refLength, 1)
@@ -445,7 +405,6 @@ export function evaluateStroke(user: Stroke, reference: Stroke, rawPoints?: Poin
   const pauseTotal = pauses.reduce((sum, n) => sum + n, 0)
   const pauseScore = pauseTotal === 0 ? 1 : pauseTotal === 1 ? 0.6 : 0.3
 
-  // Najsłabszy fragment waży tyle samo co średnia — jeden zły fragment psuje całą kreskę.
   const mean = (key: 'offset' | 'angle' | 'tremor') => {
     const values = segmentScores.map((s) => s[key])
     return 0.5 * (values.reduce((sum, v) => sum + v, 0) / values.length) + 0.5 * Math.min(...values)
@@ -463,7 +422,6 @@ export function evaluateStroke(user: Stroke, reference: Stroke, rawPoints?: Poin
     (100 * weighted.reduce((sum, [s, w]) => sum + s * w, 0)) / weighted.reduce((sum, [, w]) => sum + w, 0),
   )
 
-  // --- Komentarz: najpierw problemy (od najgorszych), potem to, co jest dobre ---
   const globalIssues: { severity: number; sentence: string }[] = []
   if (lengthGrade.level !== 'good') {
     const pct = Math.round(Math.abs(1 - lengthRatio) * 100)
@@ -495,7 +453,6 @@ export function evaluateStroke(user: Stroke, reference: Stroke, rawPoints?: Poin
   )
   const sentences = [...problemSentences, ...(goodSentence ? [goodSentence] : []), ...globalIssues.slice(0, 1).map((g) => g.sentence)]
 
-  // Wynik nie może przeczyć słownej ocenie: błąd ogranicza go do 75, drobna uwaga do 90.
   const overall = [lengthGrade.level, gapGrade.level, ...segments.map((s) => s.level)].reduce<Level>(worse, 'good')
   const score = Math.min(rawScore, overall === 'bad' ? 75 : overall === 'warn' ? 90 : 100)
   const level: Level = overall === 'good' && score >= 80 ? 'good' : score >= 55 ? 'warn' : 'bad'
@@ -516,23 +473,11 @@ export function evaluateStroke(user: Stroke, reference: Stroke, rawPoints?: Poin
 }
 
 export type LiveProgress = {
-  /** 0–100: jak blisko wzoru leży kreska. Steruje kolorem aktywnej kreski. */
   accuracy: number
-  /** 0–100: jaka część wzoru jest już pokryta w granicach tolerancji. */
   coverage: number
-  /** Margines błędu w px — do tyle od wzoru kreska jeszcze zalicza pokrycie. */
   tolerancePx: number
 }
 
-/**
- * Szybka ocena w trakcie rysowania. Dokładność to tylko odległość od wzoru,
- * bo niedokończona kreska nie ma jeszcze sensownej długości ani końca.
- *
- * Pokrycie liczymy kubełkami wzdłuż długości wzoru: kubełek zalicza się, gdy trafi
- * w niego punkt kreski w granicach tolerancji. Dzięki temu kreślenie w jednym miejscu
- * nie zapełnia paska, przerwa w środku nie liczy się jako narysowana, a ruch tam
- * i z powrotem nie dodaje pokrycia drugi raz.
- */
 export function liveProgress(partial: Stroke, reference: Stroke): LiveProgress | null {
   if (partial.points.length < 2 || reference.points.length < 2) return null
 

@@ -1,6 +1,3 @@
-// Edge Function pośrednicząca w wywołaniach Claude API.
-// Klucz ANTHROPIC_API_KEY istnieje tylko po stronie serwera, a prompty są zdefiniowane tutaj,
-// więc klient nie może użyć funkcji jako ogólnego proxy do modelu.
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@supabase/supabase-js'
 
@@ -13,7 +10,7 @@ const PLAIN_TEXT =
   'Odpowiedz zwykłym tekstem, bez nagłówków, pogrubień ani innego formatowania Markdown. ' +
   'Zwracaj się bezpośrednio do osoby rysującej (np. "Spróbuj...", "Kreska jest..."), nie pisz o "studencie" ' +
   'i unikaj form zależnych od płci (np. "narysowałeś/narysowałaś") — opisuj kreskę, a nie autora.'
-const MAX_IMAGE_BASE64_LENGTH = 7_000_000 // ~5 MB po zdekodowaniu
+const MAX_IMAGE_BASE64_LENGTH = 7_000_000
 const MEDIA_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'] as const
 type MediaType = (typeof MEDIA_TYPES)[number]
 
@@ -36,8 +33,6 @@ type AiRequest =
   | { action: 'analyze-stroke'; stepTitle: string; metrics: StrokeMetrics }
   | { action: 'plan-contours'; image: ImagePayload; overlay: ImagePayload; contours: ContourSummary[]; hasMask: boolean }
 
-// Wynik lokalnego algorytmu oceny kreski (strokeEvaluation.ts). Model dostaje gotowe
-// liczby zamiast obrazka: taniej i trafniej, bo nie musi niczego zgadywać z miniatury.
 type StrokeSegment = {
   key: 'start' | 'middle' | 'end'
   level: 'good' | 'warn' | 'bad'
@@ -59,25 +54,14 @@ type StrokeMetrics = {
   segments: StrokeSegment[]
 }
 
-/**
- * Opis konturu wyciągniętego ze zdjęcia po stronie klienta. Model nigdy nie dostaje
- * ani nie podaje punktów — geometria pochodzi z pikseli użytkownika i jest dokładna.
- * Tu idą tylko liczby pozwalające powiedzieć, CO to za kontur: gdzie leży i jak długi jest.
- */
 type ContourSummary = {
-  /** Numer konturu u klienta; model odwołuje się wyłącznie do niego. */
   i: number
-  /** Ramka w ułamkach rozmiaru zdjęcia: [x0, y0, x1, y1]. */
   box: [number, number, number, number]
-  /** Długość w ułamku przekątnej zdjęcia. */
   len: number
-  /** Czy kontur jest domknięty (koniec wraca do początku). */
   closed: boolean
-  /** Rola w planie: obrys obiektu, linia konstrukcyjna albo detal. */
   role: 'outline' | 'structure' | 'detail'
 }
 
-/** Błąd z komunikatem dla użytkownika (po polsku) i kodem do obsługi po stronie klienta. */
 class HttpError extends Error {
   constructor(public status: number, message: string, public code = 'error') {
     super(message)
@@ -119,7 +103,6 @@ function assertFinite(value: unknown, field: string): asserts value is number {
   }
 }
 
-/** Walidacja po stronie serwera, bo prompt jest tu składany z tych liczb. */
 function assertMetrics(value: unknown): asserts value is StrokeMetrics {
   const m = value as Partial<StrokeMetrics> | null
   if (!m || typeof m !== 'object') throw new HttpError(400, 'Brak pola metrics', 'invalid_input')
@@ -189,14 +172,12 @@ function textOf(message: Anthropic.Message): string {
     .trim()
 }
 
-/** Odmowa modelu (klasyfikatory bezpieczeństwa) — content może być wtedy pusty lub niepełny. */
 function assertNotRefused(message: Anthropic.Message): void {
   if (message.stop_reason === 'refusal') {
     throw new HttpError(422, 'AI odmówiło analizy tego obrazu. Spróbuj innego zdjęcia.', 'refusal')
   }
 }
 
-/** Ucięty komentarz (max_tokens) przycinamy do ostatniego pełnego zdania zamiast pokazywać urwane słowo. */
 function completeSentences(message: Anthropic.Message): string {
   assertNotRefused(message)
   const text = textOf(message)
@@ -262,10 +243,6 @@ const CONTOUR_LABEL_SCHEMA = {
 
 type ContourLabel = { i: number; title: string; description: string; background: boolean }
 
-/**
- * Nazwy od modelu są propozycją: numer spoza listy albo pusty tytuł odpada, a każdy numer
- * liczy się raz. Brak nazwy nie jest błędem — klient da krokowi nazwę po roli.
- */
 function parseContourLabels(message: Anthropic.Message, available: number[]): ContourLabel[] {
   assertNotRefused(message)
   if (message.stop_reason === 'max_tokens') {
@@ -296,9 +273,6 @@ Najpierw to, co jest źle i gdzie, potem to, co jest dobre. Bez wstępów, bez r
 Przykład stylu: "Kontur kubka jest za wąski u dołu. Elipsa otworu jest dobra i płynna."`
 }
 
-// Progi w opisie są tymi samymi stałymi, które liczy strokeEvaluation.ts — poza odchyleniem,
-// bo jego tolerancja rośnie z długością i grubością wzoru. Dlatego dla odchylenia model ma
-// patrzeć na gotowy `level`, a nie na piksele.
 const STROKE_SYSTEM = `Jesteś instruktorem rysunku. Oceniasz jedno pociągnięcie, którym ktoś odrysował wzorcową linię.
 
 Nie widzisz rysunku — dostajesz pomiary z algorytmu. Odczytuj je tak:
@@ -335,7 +309,6 @@ type StrokeComment = { mistake: string; fix: string }
 
 function parseStrokeComment(message: Anthropic.Message): StrokeComment {
   assertNotRefused(message)
-  // Schemat gwarantuje poprawny JSON tylko dla pełnej odpowiedzi.
   if (message.stop_reason === 'max_tokens') {
     throw new HttpError(502, 'Odpowiedź AI została ucięta. Spróbuj jeszcze raz.', 'truncated')
   }
@@ -363,9 +336,6 @@ async function handle(client: Anthropic, body: AiRequest): Promise<unknown> {
             {
               type: 'image',
               source: { type: 'base64', media_type: body.referenceImage.mediaType, data: body.referenceImage.data },
-              // Wzorzec jest ten sam przy każdej kresce, a jest największą częścią wejścia:
-              // odczyt z cache kosztuje 0,1x. Działa od 512 tokenów prefiksu — małe zdjęcie
-              // po prostu się nie zbuforuje, bez błędu.
               cache_control: { type: 'ephemeral' },
             },
             { type: 'image', source: { type: 'base64', media_type: 'image/png', data: body.drawingImage } },
@@ -385,8 +355,6 @@ async function handle(client: Anthropic, body: AiRequest): Promise<unknown> {
         .join(String.fromCharCode(10))
       const message = await client.messages.create({
         model: MODEL,
-        // Sam plan: tytuły, opisy i numery. Bez geometrii mieści się w ułamku tego,
-        // czego wymagało dyktowanie współrzędnych przez model.
         max_tokens: 6000,
         thinking: NO_THINKING,
         output_config: { format: { type: 'json_schema', schema: CONTOUR_LABEL_SCHEMA } },
@@ -409,8 +377,6 @@ async function handle(client: Anthropic, body: AiRequest): Promise<unknown> {
         model: MODEL,
         max_tokens: 300,
         thinking: NO_THINKING,
-        // Zmierzone: sam prompt to ~1250 tokenów, czyli powyżej progu 512 — i jest ten sam
-        // przy każdej kresce. Odczyt z cache kosztuje 0,1x, więc wejście tanieje ~4x.
         system: [{ type: 'text', text: STROKE_SYSTEM, cache_control: { type: 'ephemeral' } }],
         output_config: { format: { type: 'json_schema', schema: STROKE_SCHEMA } },
         messages: [{
@@ -419,7 +385,6 @@ async function handle(client: Anthropic, body: AiRequest): Promise<unknown> {
 Pomiary: ${JSON.stringify(body.metrics)}`,
         }],
       })
-      // Koszt tej akcji jest sednem wyboru modelu, więc zużycie tokenów idzie do logów.
       console.log('analyze-stroke usage', JSON.stringify(message.usage))
       return parseStrokeComment(message)
     }

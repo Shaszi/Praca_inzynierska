@@ -4,7 +4,6 @@ type DebugPanelProps = {
   lastStrokeDurationMs: number | null
 }
 
-// Dane techniczne płótna — zwinięte domyślnie, żeby nie zaśmiecały interfejsu.
 export function DebugPanel({ strokeCount, currentStrokePointCount, lastStrokeDurationMs }: DebugPanelProps) {
   return (
     <details className="group text-[13px] text-ink-faint">

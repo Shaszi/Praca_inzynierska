@@ -10,10 +10,6 @@ function PencilIcon() {
   )
 }
 
-/**
- * Nazwa z ołówkiem obok: klik zamienia ją w pole. Enter zapisuje, Esc odrzuca.
- * Ta sama na karcie projektu i w pasku nad kanwą.
- */
 export function EditableTitle({
   title,
   onRename,

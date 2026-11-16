@@ -5,7 +5,6 @@ import { buildCalendar, type DailyActivity } from '../utils/goalProgress'
 const WEEKDAY_LABELS = ['Pn', '', 'Śr', '', 'Pt', '', '']
 const MONTHS = ['sty', 'lut', 'mar', 'kwi', 'maj', 'cze', 'lip', 'sie', 'wrz', 'paź', 'lis', 'gru']
 
-// Rampa z projektu: im więcej rysunków, tym cieplejszy kolor markera.
 function cellClass(count: number, isFuture: boolean): string {
   if (isFuture) return 'bg-transparent'
   if (count === 0) return 'bg-surface-dim'
@@ -28,7 +27,6 @@ function describe(count: number): string {
 export function ActivityCalendar({ activity, today, weeks = 26 }: { activity: DailyActivity[]; today: string; weeks?: number }) {
   const calendar = useMemo(() => buildCalendar(activity, today, weeks), [activity, today, weeks])
 
-  // Etykieta miesiąca nad tygodniem, w którym zaczyna się nowy miesiąc.
   const monthLabels = calendar.map((week, index) => {
     const month = Number(week[0].day.slice(5, 7))
     const previousMonth = index > 0 ? Number(calendar[index - 1][0].day.slice(5, 7)) : null

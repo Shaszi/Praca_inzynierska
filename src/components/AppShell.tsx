@@ -10,11 +10,6 @@ import { navItemsFor } from './shell/navItems'
 
 const DRAWER_ID = 'app-nav-drawer'
 
-/**
- * Szkielet aplikacji. Na szerokim ekranie (od 1280 px) pełny pasek nawigacji; węższy
- * — tablet i telefon — dostaje logo, serię i przycisk „Menu" z wysuwanym panelem.
- * Pasek z ośmioma pozycjami zawijał się tam w dwa nierówne rzędy.
- */
 export function AppShell() {
   const { user, signOut, roles, hasRole } = useAuth()
   const [isMenuOpen, setIsMenuOpen] = useState(false)

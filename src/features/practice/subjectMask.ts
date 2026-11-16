@@ -1,17 +1,4 @@
-/**
- * Wycięcie głównego obiektu ze zdjęcia przed detekcją konturów.
- *
- * Detektor krawędzi widzi każdą krawędź na zdjęciu, także tła, a model dostawał potem
- * listę ramek i zgadywał, co jest czym („włosy" zamiast zasłony za głową). Tu tło
- * znika, zanim detektor cokolwiek zobaczy: piksele poza maską dostają jeden płaski
- * kolor, więc nie mają krawędzi, a granica obiektu z tym kolorem staje się wyraźnym obrysem.
- */
 
-/**
- * Maska obiektu: 1 = obiekt, 0 = tło, w rozdzielczości `width`×`height`.
- * `soft` — maska z lassa: obszar, w którym leży obiekt, a nie jego dokładna sylwetka.
- * Jej granica to linia narysowana palcem, więc nie wolno z niej robić obrysu.
- */
 export type SubjectMask = { data: Uint8Array; width: number; height: number; soft?: boolean }
 
 /**
@@ -34,18 +21,12 @@ export function maskFromCategory(
   return { data, width, height }
 }
 
-/** Jaka część kadru należy do obiektu — za mało znaczy, że segmenter niczego nie złapał. */
 export function maskCoverage(mask: SubjectMask): number {
   let sum = 0
   for (const value of mask.data) sum += value
   return sum / mask.data.length
 }
 
-/**
- * Zdjęcie z tłem zamalowanym jednym kolorem. Kolor przeciwny do średniej jasności obiektu,
- * żeby obrys obiektu był mocną krawędzią: jasny obiekt na czarnym, ciemny na białym.
- * Maska może mieć inną rozdzielczość niż zdjęcie — próbkujemy ją najbliższym sąsiadem.
- */
 export function isolateSubject(
   pixels: Uint8ClampedArray,
   width: number,
@@ -79,14 +60,8 @@ export function isolateSubject(
   return out
 }
 
-/** Najdłuższy bok maski z lassa — wystarcza do wycięcia obszaru, a liczy się od razu. */
 const LASSO_MASK_MAX = 512
 
-/**
- * Wypełnia pętlę lassa (punkty w pikselach zdjęcia) i zwraca ją jako miękką maskę.
- * Wypełnianie wierszami (scanline, reguła parzystości): dla każdego wiersza przecięcia
- * z bokami wielokąta, a między kolejnymi parami — wnętrze.
- */
 export function polygonMask(points: { x: number; y: number }[], width: number, height: number): SubjectMask {
   const scale = Math.min(1, LASSO_MASK_MAX / Math.max(width, height))
   const mw = Math.max(1, Math.round(width * scale))
@@ -112,7 +87,6 @@ export function polygonMask(points: { x: number; y: number }[], width: number, h
   return { data, width: mw, height: mh, soft: true }
 }
 
-/** Czy piksel zdjęcia (x, y) leży w masce — maska może mieć inną rozdzielczość niż zdjęcie. */
 export function maskContains(mask: SubjectMask, width: number, height: number): (x: number, y: number) => boolean {
   return (x, y) =>
     mask.data[Math.floor((y * mask.height) / height) * mask.width + Math.floor((x * mask.width) / width)] === 1

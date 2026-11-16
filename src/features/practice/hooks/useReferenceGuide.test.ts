@@ -27,11 +27,9 @@ describe('mergeReferences', () => {
     expect(ids(merged)).toEqual([...WARMUPS.map((w) => w.id), 'plik', 'db-1'])
   })
 
-  // Dwie opcje <select> o tym samym value dają pozycję, której nie da się wybrać.
   it('nie powiela id, gdy plik z dysku nosi id wiersza z bazy', () => {
     const merged = mergeReferences(reference('taki-sam', 'Z dysku'), [reference('taki-sam', 'Z bazy')])
     expect(ids(merged).filter((id) => id === 'taki-sam')).toHaveLength(1)
-    // Wygrywa plik: użytkownik właśnie go wskazał.
     expect(merged.find((item) => item.id === 'taki-sam')?.name).toBe('Z dysku')
   })
 

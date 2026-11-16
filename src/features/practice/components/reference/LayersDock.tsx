@@ -1,10 +1,6 @@
 import { LayerPanel } from '../../../canvas/components/LayerPanel'
 import type { Layer, Stroke } from '../../../../types/drawing'
 
-/**
- * Panel warstw dokowany z lewej strony kanwy, jak `.fs-layers` w projekcie.
- * Przełączniki widoczności, kłódki i krycia sprowadzają się do jednej zmiany warstwy.
- */
 export function LayersDock({
   layers,
   activeLayerId,

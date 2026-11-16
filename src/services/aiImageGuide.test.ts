@@ -17,8 +17,6 @@ describe('fitStrokesToSquare', () => {
     expect(fitStrokesToSquare([])).toEqual({ scale: 1, offsetX: 0, offsetY: 0 })
   })
 
-  // To jest ten błąd: współrzędne płótna 1200x800 szły wprost na obrazek 512x512,
-  // więc wszystko poza lewym górnym narożnikiem nie docierało do modelu.
   it('mieści kreskę narysowaną daleko poza kwadratem 512 px', () => {
     const view = fitStrokesToSquare([stroke([[900, 700], [1100, 740]])])
 
@@ -46,7 +44,6 @@ describe('fitStrokesToSquare', () => {
     const a = place(view, 10, 10)
     const b = place(view, 410, 110)
 
-    // Proporcja 400:100 z rysunku musi zostać proporcją 4:1 na obrazku.
     expect((b.x - a.x) / (b.y - a.y)).toBeCloseTo(4)
   })
 
@@ -75,7 +72,6 @@ describe('buildSteps', () => {
     expect(steps.map((s) => s.id)).toEqual(['step-0', 'step-1', 'step-2'])
   })
 
-  // To jest reguła, dla której kroki istnieją: ocena porównuje kreskę z jedną linią.
   it('każdy krok ma dokładnie jedną linię', () => {
     for (const step of buildSteps(plan, [], true)) expect(step.strokes).toHaveLength(1)
   })

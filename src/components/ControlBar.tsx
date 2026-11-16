@@ -45,7 +45,6 @@ export function ControlBar({
   minBrushSize = 1,
   maxBrushSize = 28,
   className = '',
-  // Projekt nie daje paskowi własnej karty — kontrolki leżą wprost na blacie.
   chromeClassName = '',
 }: ControlBarProps) {
   return (

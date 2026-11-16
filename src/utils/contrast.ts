@@ -12,7 +12,6 @@ function luminance(hex: string): number {
   )
 }
 
-/** Kontrast WCAG między dwoma kolorami #rrggbb. Zwraca 1–21. */
 export function contrastRatio(a: string, b: string): number {
   const [lighter, darker] = [luminance(a), luminance(b)].sort((x, y) => y - x)
   return (lighter + 0.05) / (darker + 0.05)

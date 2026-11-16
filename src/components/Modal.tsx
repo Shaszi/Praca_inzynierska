@@ -1,10 +1,6 @@
 import { useEffect, type ReactNode } from 'react'
 import { Button } from './ui'
 
-/**
- * Prosty modal na podkładce. Esc zamyka, fokus wchodzi na przycisk, a kliknięcie
- * w tło też zamyka — bez tego dialog łapie użytkownika w pułapkę na dotyku.
- */
 export function Modal({
   title,
   children,
@@ -16,7 +12,6 @@ export function Modal({
   children: ReactNode
   onClose: () => void
   closeLabel?: string
-  /** `lg` dla treści, którą się przegląda (siatka wzorców), `sm` dla komunikatu. */
   size?: 'sm' | 'lg'
 }) {
   useEffect(() => {

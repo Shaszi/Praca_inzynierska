@@ -46,12 +46,9 @@ export function ImagePracticePage() {
   const [stepIndex, setStepIndex] = useState(0)
   const [analyzeError, setAnalyzeError] = useState<string | null>(null)
   const [imageName, setImageName] = useState('')
-  // Rozmiar własny zdjęcia: w tych pikselach model podaje linie, w nich rysujemy tło.
   const [imageSize, setImageSize] = useState<{ width: number; height: number } | null>(null)
-  // Piksele i obraz wgranego zdjęcia — czekają, aż użytkownik wskaże obiekt.
   const [loadedPhoto, setLoadedPhoto] = useState<LoadedPhoto | null>(null)
 
-  // Te same ustawienia pędzla co w ćwiczeniu z wzorcem — jeden hook, jeden zapis.
   const { brush, setBrush } = useBrushSettings()
   const [isBrushOpen, setIsBrushOpen] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
@@ -61,7 +58,6 @@ export function ImagePracticePage() {
   const [isAnalyzingAI, setIsAnalyzingAI] = useState(false)
   const [aiFeedback, setAiFeedback] = useState<string | null>(null)
   const [awaitingNext, setAwaitingNext] = useState(false)
-  /** Numer próby: odpowiedź modelu starsza niż bieżąca próba nie ma już gdzie trafić. */
   const attemptRef = useRef(0)
   const [photoPath, setPhotoPath] = useState<string | null>(null)
   const [resumedSessionId, setResumedSessionId] = useState<string | null>(null)
@@ -90,8 +86,6 @@ export function ImagePracticePage() {
   const { recordAttempt, complete: completeSession, reset: resetSession, saveProgress, rename: renameSession, saveError } =
     usePracticeSession(sessionParams)
 
-  // Wznowienie projektu: kurs, zdjęcie, kreski i krok biorą się z bazy, a nie
-  // z ponownej analizy — druga detekcja konturów dałaby inny podział na kroki.
   const sessionParam = searchParams.get('session')
   const restoredRef = useRef<string | null>(null)
   // `replaceStrokes` przez ref, nie przez listę zależności: gdy efekt restartuje się
@@ -126,7 +120,6 @@ export function ImagePracticePage() {
         replaceStrokesRef.current(project.strokes)
         if (url) {
           setImageUrl(url)
-          // Rozmiar z pliku, bo kurs jest w pikselach oryginału, a nie zmniejszonej kopii.
           setImageSize(await readImageSize(url))
         }
         setPhase('practicing')
@@ -146,7 +139,6 @@ export function ImagePracticePage() {
     try {
       const { base64, mediaType: mt } = await readFileAsBase64(file)
       const url = URL.createObjectURL(file)
-      // Piksele są potrzebne do konturów, więc zdjęcie i tak musi przejść przez płótno.
       const loaded = await readPixels(url)
       setImageUrl(url)
       setImageSize({ width: loaded.width, height: loaded.height })
@@ -154,7 +146,6 @@ export function ImagePracticePage() {
       setMediaType(mt)
       setImageName(file.name.replace(/\.[^.]+$/, ''))
       setLoadedPhoto(loaded)
-      // Najpierw wybór obiektu: kurs powstaje dopiero z zaznaczenia.
       setPhase('select')
     } catch (error) {
       setAnalyzeError(describeAiError(error))
@@ -169,7 +160,6 @@ export function ImagePracticePage() {
     setPhase('analyzing')
     try {
       const generatedSteps = await buildContourCourse(pixels, width, height, imageBase64, mediaType, mask)
-      // Zdjęcie do Storage dopiero teraz: gdy model nie dał planu, nie ma czego zapisywać.
       const stored = await photoService.upload(await downscaleToJpeg(image)).catch(() => null)
       setPhotoPath(stored)
       setResumedSessionId(null)
@@ -184,13 +174,10 @@ export function ImagePracticePage() {
 
 
   const currentStep = steps[stepIndex] ?? null
-  // Stabilna tożsamość: płótno przelicza widok, gdy obrys się zmieni, a nie co render.
   const fitBounds = useMemo(
     () => (imageSize ? { minX: 0, minY: 0, maxX: imageSize.width, maxY: imageSize.height } : null),
     [imageSize],
   )
-  // Krok ma zawsze dokładnie jedną linię (patrz buildSteps), więc ocena
-  // porównuje kreskę z tym, co użytkownik naprawdę ma narysować.
   const guideStroke = currentStep?.strokes[0] ?? null
   const { evaluation, live, analyzeActiveStroke, evaluateCompletedStroke, resetAnalysis } =
     usePracticeAnalysis(guideStroke)
@@ -203,16 +190,11 @@ export function ImagePracticePage() {
   const handleStrokeComplete = useCallback(async (stroke: Stroke, rawPoints: Point[]) => {
     addStroke(stroke)
     if (!currentStep) return
-    // Ocena lokalna liczy się natychmiast z linii pomocniczej kroku; komentarz modelu
-    // dochodzi chwilę później, tak samo jak w ćwiczeniu z wzorcem.
     const result = evaluateCompletedStroke(stroke, rawPoints)
-    // Kliknięcie albo urwany ruch nie jest próbą: panel oceny nie miałby co pokazać,
-    // a razem z nim zniknęłyby przyciski i krok byłby nie do opuszczenia.
     if (result?.tooShort) {
       undoStroke()
       return
     }
-    // Ocena lokalna wystarczy, żeby iść dalej — nie każemy czekać na model.
     setAwaitingNext(true)
     setIsAnalyzingAI(true)
     setAiFeedback(null)
@@ -222,8 +204,6 @@ export function ImagePracticePage() {
       feedback = await analyzeStrokeAgainstImage(
         strokes, stroke, imageBase64, mediaType, currentStep.title, currentStep.description,
       )
-      // Użytkownik mógł w tym czasie przejść dalej albo powtórzyć kreskę; wtedy ten
-      // komentarz dotyczy już nieistniejącej próby i nie wolno go pokazać.
       if (attemptRef.current === attempt) setAiFeedback(feedback)
     } finally {
       if (attemptRef.current === attempt) setIsAnalyzingAI(false)
@@ -240,7 +220,6 @@ export function ImagePracticePage() {
   const handleNextStep = useCallback(() => {
     if (stepIndex >= steps.length - 1) { setPhase('done'); completeSession(strokes); return }
     attemptRef.current++
-    // Zapis po każdym kroku: do projektu wracamy dokładnie tu, gdzie się skończyło.
     saveProgress(stepIndex + 1, strokes)
     setStepIndex((i) => i + 1)
     setAiFeedback(null)
@@ -278,7 +257,6 @@ export function ImagePracticePage() {
     return () => window.removeEventListener('keydown', onKey)
   }, [canUndo, canRedo, handleUndo, redoStroke])
 
-  // --- Upload phase ---
   if (phase === 'upload') {
     return (
       <section className="flex w-full flex-1 flex-col gap-6">
@@ -296,7 +274,6 @@ export function ImagePracticePage() {
     )
   }
 
-  // --- Wybór obiektu ---
   if (phase === 'select' && imageUrl && loadedPhoto) {
     return (
       <>
@@ -308,17 +285,14 @@ export function ImagePracticePage() {
     )
   }
 
-  // --- Analyzing phase ---
   if (phase === 'analyzing') return <ImageAnalyzingScreen />
 
-  // --- Done phase ---
   if (phase === 'done') {
     return (
       <ImageDoneScreen imageUrl={imageUrl} strokes={strokes} stepsTotal={steps.length} saveError={saveError} onRestart={resetAll} />
     )
   }
 
-  // --- Practicing phase — full-screen canvas with floating panels ---
   const canProceed = awaitingNext
   const canRetry = awaitingNext && canUndo
   const isLastStep = stepIndex >= steps.length - 1
@@ -341,7 +315,6 @@ export function ImagePracticePage() {
         <p className="rounded-[16px] bg-danger-soft px-3.5 py-3 text-sm font-medium text-danger">{saveError}</p>
       )}
 
-      {/* Kanwa bierze resztę, ocena siedzi w szynie 340 px; na pełnym ekranie oba idą do menu. */}
       <PracticeLayout
         isFullscreen={isFullscreen}
         tools={
@@ -389,7 +362,6 @@ export function ImagePracticePage() {
           <div className="relative min-h-[420px] min-w-0 flex-1">
             <DrawingCanvas
               layers={canvasLayers}
-              // Tylko linie bieżącego kroku: poprzednie są już narysowane ręką użytkownika.
               referenceStrokes={currentStep?.strokes ?? []}
               fitBounds={fitBounds}
               backgroundImageSize={imageSize}

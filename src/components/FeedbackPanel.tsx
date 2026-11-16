@@ -6,9 +6,7 @@ import { Button, TypingDots } from './ui'
 
 type FeedbackPanelProps = {
   evaluation: StrokeEvaluation | null
-  /** Niepuste, gdy użytkownik właśnie prowadzi kreskę. */
   live?: LiveProgress | null
-  /** Krótkie okno po puszczeniu kreski, w którym wynik się odsłania. */
   isAnalysing?: boolean
   canProceed?: boolean
   canRetry?: boolean
@@ -16,16 +14,10 @@ type FeedbackPanelProps = {
   onNextStroke?: () => void
   onRetry?: () => void
   emptyText?: string
-  /** Komentarz modelu do tej kreski. Algorytm mówi co, model — dlaczego i jak poprawić. */
   comment?: StrokeComment | null
   isCommentPending?: boolean
   commentError?: string | null
-  /**
-   * Komentarz jako jeden tekst. Tryb ze zdjęcia dostaje od modelu zdanie, nie parę
-   * (błąd, poprawka) — model ocenia tam obrazek, nie gotowe pomiary.
-   */
   commentText?: string | null
-  /** Napis na przycisku dalej. Tryb ze zdjęcia idzie krokami planu, nie kreskami wzorca. */
   nextLabel?: string
 }
 
@@ -49,7 +41,6 @@ function Shell({ children }: { children: React.ReactNode }) {
   )
 }
 
-/** Kółko oceny przy wierszu listy: ptaszek na dobrze, wykrzyknik na uwadze. */
 function Check({
   level,
   name,
@@ -67,7 +58,6 @@ function Check({
   return (
     <li
       className="check-in flex items-center gap-3 border-b border-line py-[9px] last:border-b-0"
-      // Wiersze wchodzą po kolei, żeby wynik „składał się" na oczach.
       style={{ animationDelay: `${index * 70}ms` }}
     >
       <span
@@ -85,7 +75,6 @@ function Check({
   )
 }
 
-/** Opis tempa — w projekcie prędkość jest czwartym wierszem listy, obok trzech tercji. */
 function speedCheck(evaluation: StrokeEvaluation): { level: Level; detail: string } {
   const speed = Math.round(evaluation.speedPxPerSec)
   if (speed < 50) return { level: 'bad', detail: 'Za wolno, linia się wyrysowuje' }
@@ -109,7 +98,6 @@ export function FeedbackPanel({
   commentText = null,
   nextLabel = 'Następna kreska',
 }: FeedbackPanelProps) {
-  // 1. Prowadzisz kreskę — pierścień rośnie razem z pokryciem wzoru.
   if (live) {
     return (
       <Shell>
@@ -136,7 +124,6 @@ export function FeedbackPanel({
 
   const hasResult = evaluation !== null && !evaluation.tooShort
 
-  // 2. Puściłeś kreskę — wynik się odsłania.
   if (isAnalysing && hasResult) {
     return (
       <Shell>
@@ -164,7 +151,6 @@ export function FeedbackPanel({
     )
   }
 
-  // 3. Wynik.
   const tone = TONE[evaluation.level]
   const speed = speedCheck(evaluation)
   const worstIssue = evaluation.segments.flatMap((segment) => segment.issues)[0] ?? null
@@ -223,7 +209,6 @@ export function FeedbackPanel({
   )
 }
 
-/** Miejsce na odpowiedź modelu — pod oceną algorytmu, żeby było jasne, co skąd pochodzi. */
 function AiComment({
   comment,
   text = null,

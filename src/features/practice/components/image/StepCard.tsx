@@ -1,6 +1,5 @@
 import type { ImageGuideStep } from '../../../../services/aiImageGuide'
 
-/** Bieżący krok kursu: numer, nazwa, opis i pasek kroków. */
 export function StepCard({ steps, stepIndex }: { steps: ImageGuideStep[]; stepIndex: number }) {
   const step = steps[stepIndex] ?? null
   return (

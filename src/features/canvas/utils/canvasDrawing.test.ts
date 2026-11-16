@@ -2,8 +2,6 @@ import { describe, expect, it } from 'vitest'
 import type { EraseStamp, Layer, Point, Stroke } from '../../../types/drawing'
 import { replayLayer } from './canvasDrawing'
 
-// Atrapa kontekstu 2D: jsdom nie ma canvasa, a replayLayer jest czystą funkcją nad kontekstem.
-// Zapisujemy tylko operacje istotne dla kolejności: rysowanie kreski i stempel wymazania.
 type Op = 'clear' | 'draw' | 'erase'
 
 function fakeContext() {
@@ -30,7 +28,6 @@ function fakeContext() {
       ops.push('draw')
     },
     fill: (): void => {
-      // Kreska jednopunktowa też używa fill(), więc rozstrzyga tryb mieszania.
       ops.push(context.globalCompositeOperation === 'destination-out' ? 'erase' : 'draw')
     },
   }
@@ -38,7 +35,6 @@ function fakeContext() {
 }
 
 const point = (x: number, y: number): Point => ({ x, y, timestamp: 0 })
-// Dwa punkty: drawStroke użyje stroke(), nie fill() — kolejność czyta się jednoznacznie.
 const line = (offset: number): Stroke => ({ brushSize: 4, points: [point(offset, 0), point(offset + 10, 0)] })
 
 const layerOf = (strokes: Stroke[], erases: EraseStamp[]): Layer => ({
@@ -69,8 +65,6 @@ describe('replayLayer', () => {
 
   it('wplata stempel tam, gdzie powstał — kreska przez starą dziurę przeżywa', () => {
     const erases: EraseStamp[] = [{ x: 5, y: 0, r: 3, afterStroke: 1 }]
-    // Gdyby stemple szły zawsze na koniec, wyszłoby draw, draw, erase — i druga
-    // kreska zostałaby wymazana razem z pierwszą.
     expect(run(layerOf([line(0), line(20)], erases))).toEqual(['clear', 'draw', 'erase', 'draw'])
   })
 
@@ -119,8 +113,6 @@ describe('kolor per kreska', () => {
     return { context, ops, colors, alphas }
   }
 
-  // To jest cała istota zmiany: zmiana pędzla nie może przemalować tego,
-  // co już narysowane. Każda kreska niesie własny kolor.
   it('każda kreska rysuje się swoim kolorem, nie kolorem płótna', () => {
     const { context, colors } = colourTracking()
     replayLayer(

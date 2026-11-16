@@ -7,8 +7,6 @@ describe('safeRedirect', () => {
     expect(safeRedirect('/app/practice?ref=abc#krok')).toBe('/app/practice?ref=abc#krok')
   })
 
-  // To jest sedno: `//evil.com` przeglądarka czyta jako adres zewnętrzny, a kod logowania
-  // sklejał go z location.origin — czyli otwarte przekierowanie na obcą domenę.
   it('odrzuca adresy prowadzące poza aplikację', () => {
     expect(safeRedirect('//evil.com')).toBe('/app')
     expect(safeRedirect('///evil.com')).toBe('/app')

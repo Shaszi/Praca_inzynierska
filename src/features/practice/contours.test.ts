@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { extractContours, pathLength, removeOverlaps, simplify, toGrayscale, traceChains } from './contours'
 
-/** Płótno RGBA wypełnione bielą, na którym można postawić czarne piksele. */
 function canvas(width: number, height: number) {
   const data = new Uint8ClampedArray(width * height * 4).fill(255)
   return {
@@ -49,7 +48,6 @@ describe('simplify', () => {
 
 describe('traceChains', () => {
   it('idzie wzdłuż łańcucha, nie w poprzek', () => {
-    // Pozioma linia krawędziowa w siatce 6x3.
     const edges = new Uint8Array(18)
     for (let x = 1; x <= 4; x++) edges[6 + x] = 1
     const [chain] = traceChains(edges, 6, 3)
@@ -71,12 +69,10 @@ describe('extractContours', () => {
     const contours = extractContours(data, 80, 60, { minLengthPx: 10 })
 
     expect(contours.length).toBeGreaterThan(0)
-    // Obrys prostokąta 40x30 ma obwód 140; wypełnienie dałoby wielokrotnie więcej punktów.
     const longest = contours[0]
     expect(pathLength(longest)).toBeGreaterThan(100)
     expect(longest.length).toBeLessThan(40)
 
-    // Każdy punkt leży przy krawędzi prostokąta, nie w jego środku.
     for (const point of longest) {
       const nearEdge =
         Math.abs(point.x - 20) <= 2 ||
@@ -118,7 +114,6 @@ describe('removeOverlaps', () => {
   it('krzyżująca się linia traci tylko kawałek przy skrzyżowaniu', () => {
     const vertical = Array.from({ length: 100 }, (_, i) => ({ x: 50, y: i }))
     const kept = removeOverlaps([line(50, 0, 100), vertical], 100, 100, 4, 20)
-    // Pozioma w całości, pionowa w dwóch kawałkach rozdzielonych luką przy przecięciu.
     expect(kept).toHaveLength(3)
     expect(kept.slice(1).every((part) => part.every((p) => Math.abs(p.y - 50) > 4))).toBe(true)
   })
@@ -132,7 +127,6 @@ describe('removeOverlaps', () => {
   it('cienki pasek na zdjęciu daje jedną linię, a nie dwie', () => {
     const image = canvas(160, 60).rect(20, 28, 140, 31)
     const total = extractContours(image.data, 160, 60).reduce((sum, c) => sum + pathLength(c), 0)
-    // Pasek ma 120 px; dwa brzegi dałyby ~240.
     expect(total).toBeLessThan(170)
   })
 })

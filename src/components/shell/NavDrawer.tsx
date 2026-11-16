@@ -5,11 +5,6 @@ import { LogOutIcon } from '../icons'
 import { RoleBadge, UserAvatar } from './HeaderBadges'
 import type { NavItem } from './navItems'
 
-/**
- * Wysuwane menu z prawej — na tablecie i telefonie zamiast paska, który się zawijał.
- * Duże wiersze (56 px) pod palec. Esc, klik w tło i wybór pozycji zamykają menu;
- * fokus wchodzi na „Zamknij", a strona pod spodem się nie przewija.
- */
 export function NavDrawer({
   id,
   isOpen,

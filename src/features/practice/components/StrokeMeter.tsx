@@ -1,11 +1,6 @@
 import { coverageWords } from '../utils/coverageWords'
 import type { LiveProgress } from '../utils/strokeEvaluation'
 
-/**
- * Pasek zapełniający się w trakcie ruchu: pokazuje, jaka część wzoru jest już pokryta.
- * Kolor bierze się z dokładności, więc rysowanie obok wzoru zapełnia pasek, ale na czerwono.
- * Po puszczeniu kreski pasek zostaje na wyniku końcowym, zamiast skakać do zera.
- */
 export function StrokeMeter({ live, finalCoverage }: { live: LiveProgress | null; finalCoverage: number | null }) {
   const coverage = Math.max(0, Math.min(100, finalCoverage ?? live?.coverage ?? 0))
   const rounded = Math.round(coverage)
@@ -30,7 +25,6 @@ export function StrokeMeter({ live, finalCoverage }: { live: LiveProgress | null
           style={{ width: `${coverage}%` }}
         />
       </div>
-      {/* Projekt pokazuje tu słowa, nie procent — w trakcie ruchu liczba nic nie podpowiada. */}
       <span className="min-w-10 text-right text-sm font-bold whitespace-nowrap">{coverageWords(rounded)}</span>
     </div>
   )

@@ -49,7 +49,6 @@ describe('normalizeReference', () => {
     expect(normalizeReference(valid)?.name).toBe('Wzorzec')
   })
 
-  // To jest powód, dla którego import przeszedł na tę funkcję: kopiuje po białej liście.
   it('obcina obce pola z obcego pliku', () => {
     const result = normalizeReference({ ...valid, isAdmin: true, publication: 'public' }) as Record<string, unknown>
     expect(result).not.toHaveProperty('isAdmin')

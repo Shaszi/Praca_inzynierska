@@ -3,14 +3,6 @@ import { Button } from '../../../components/ui'
 
 const PIN_KEY = 'practice-menu-pinned'
 
-/**
- * Układ ćwiczenia: pasek narzędzi, kanwa i szyna oceny. Na pełnym ekranie kanwa bierze
- * cały ekran, a narzędzia i ocena idą do menu — przypiętego z boku albo pływającego nad
- * kanwą i chowanego przyciskiem. Wybór przypięcia zostaje na urządzeniu.
- *
- * Drzewo jest jedno dla obu trybów (zmieniają się klasy), żeby przełączenie pełnego ekranu
- * nie montowało kanwy od nowa.
- */
 export function PracticeLayout({
   isFullscreen,
   tools,

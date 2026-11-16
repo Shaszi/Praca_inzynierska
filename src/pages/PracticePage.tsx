@@ -52,8 +52,6 @@ export function PracticePage() {
   const [isPickerOpen, setIsPickerOpen] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [lockedWarning, setLockedWarning] = useState<string | null>(null)
-  // Krótkie okno po puszczeniu kreski, w którym wynik się odsłania. Ocena jest już
-  // policzona — to animacja, nie oczekiwanie na cokolwiek.
   const [isAnalysing, setIsAnalysing] = useState(false)
   const [guideOpacity, setGuideOpacity] = useState(1)
 
@@ -75,7 +73,6 @@ export function PracticePage() {
     return () => window.clearTimeout(timer)
   }, [isAnalysing])
 
-  // Stroke-by-stroke guide state
   const [currentGuideStrokeIndex, setCurrentGuideStrokeIndex] = useState(0)
   const [awaitingNext, setAwaitingNext] = useState(false)
   const [isBrushOpen, setIsBrushOpen] = useState(false)
@@ -97,17 +94,12 @@ export function PracticePage() {
     [savedReferences, selectedReferenceId],
   )
 
-  // Stabilna tożsamość, nie nowa tablica co render: wisi na niej `fitBounds`,
-  // a od niego zależy przeliczenie widoku płótna.
   const allReferenceStrokes = useMemo(() => activeGuide?.strokes ?? [], [activeGuide])
   const totalStrokes = allReferenceStrokes.length
   const currentReferenceStroke = allReferenceStrokes[currentGuideStrokeIndex] ?? null
 
-  // Show only the current guide stroke as overlay
   const guideStrokesForCanvas = currentReferenceStroke ? [currentReferenceStroke] : []
 
-  // Obrys CAŁEGO wzorca, nie bieżącej kreski — inaczej płótno przeskalowywałoby się
-  // przy każdym kroku i kreska 1 nie leżałaby tam, gdzie kreska 2.
   const fitBounds = useMemo(() => strokesBounds(allReferenceStrokes), [allReferenceStrokes])
 
   const { evaluation, live, analyzeActiveStroke, evaluateCompletedStroke, resetAnalysis } =
@@ -152,8 +144,6 @@ export function PracticePage() {
     [activeLayer, brush.width, eraseInSession],
   )
 
-  // Ocena jest liczona lokalnie i od razu — bez czekania na serwer. Komentarz modelu
-  // dochodzi chwilę później i dopiero wtedy próba trafia do bazy, w jednym zapisie.
   const handleStrokeComplete = useCallback(
     (stroke: Stroke, rawPoints: Point[]) => {
       if (activeLayer?.locked) {
@@ -161,16 +151,12 @@ export function PracticePage() {
         return
       }
 
-      // Reguła z projektu: punkty liczą się tylko z warstwy „Ćwiczenie".
-      // Na szkicu można bazgrać do woli i nie psuć sobie wyniku.
-      // Taka kreska nie dostaje numeru kroku, więc cofanie kroku jej nie usunie.
       if (activeLayer && activeLayer.id !== PRACTICE_LAYER_ID) {
         addStroke(stroke)
         return
       }
 
       const result = evaluateCompletedStroke(stroke, rawPoints)
-      // Kliknięcie lub urwany ruch nie zostaje na płótnie i nie liczy się jako próba.
       if (result?.tooShort) return
       const step = currentGuideStrokeIndex
       addStroke({ ...stroke, stepIndex: step })
@@ -232,8 +218,6 @@ export function PracticePage() {
     resetAnalysis()
   }, [currentGuideStrokeIndex, totalStrokes, resetAnalysis, resetAiComment, completeSession, flatStrokes])
 
-  // Powtórzenie kreski: zdejmujemy właśnie tę kreskę po numerze kroku, a nie przez
-  // cofnięcie historii — na jej szczycie mogło stanąć wymazanie albo zmiana warstwy.
   const handleRetryStroke = useCallback(() => {
     removeStrokesForStep(currentGuideStrokeIndex)
     discardAttempt(currentGuideStrokeIndex)
@@ -252,9 +236,7 @@ export function PracticePage() {
 
   const canStepBack = currentGuideStrokeIndex > 0 || awaitingNext
 
-  /** Krok w tył: wraca do poprzedniej kreski i zdejmuje ją z płótna do narysowania od nowa. */
   const handleStepBack = useCallback(() => {
-    // Gdy obecny krok ma już narysowaną kreskę, w tył cofamy najpierw ją.
     if (awaitingNext) {
       handleRetryStroke()
       return
@@ -300,7 +282,6 @@ export function PracticePage() {
     resetAnalysis()
   }, [redoStroke, resetAnalysis])
 
-  // Reset guide index when reference changes
   useEffect(() => {
     setCurrentGuideStrokeIndex(0)
     setAwaitingNext(false)
@@ -341,7 +322,6 @@ export function PracticePage() {
         <p className="rounded-[16px] bg-danger-soft px-3.5 py-3 text-sm font-medium text-danger">{errorMessage ?? saveError}</p>
       ) : null}
 
-      {/* Kanwa bierze resztę, ocena siedzi w szynie 340 px; na pełnym ekranie oba idą do menu. */}
       <PracticeLayout
         isFullscreen={isFullscreen}
         tools={

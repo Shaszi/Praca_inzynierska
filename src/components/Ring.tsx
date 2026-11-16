@@ -1,12 +1,5 @@
 import type { CSSProperties, ReactNode } from 'react'
 
-/**
- * Pierścień postępu z projektu: conic-gradient wypełniany do `percent`,
- * z wyciętym środkiem i liczbą w kroju display.
- *
- * Wypełnienie animuje się przez zarejestrowaną własność `--ring-p` (patrz index.css) —
- * samo tło conic-gradient nie jest interpolowalne, więc bez tego skakałoby.
- */
 export function Ring({
   percent,
   color = 'var(--color-accent)',
@@ -14,12 +7,9 @@ export function Ring({
   label,
   children,
 }: {
-  /** 0–100; wartości poza zakresem są przycinane. */
   percent: number
-  /** Dowolny kolor CSS — zwykle token: var(--color-success) itd. */
   color?: string
   size?: number
-  /** Opis dla czytnika ekranu; bez niego pierścień jest tylko dekoracją. */
   label?: string
   children: ReactNode
 }) {

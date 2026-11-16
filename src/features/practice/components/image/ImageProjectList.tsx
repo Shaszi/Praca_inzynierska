@@ -4,10 +4,6 @@ import { StrokeThumbnail } from '../../../progress/components/StrokeThumbnail'
 import { progressService, type ImageProject } from '../../../progress/services/progressService'
 import { EditableTitle } from '../EditableTitle'
 
-/**
- * „Twoje projekty” — rysunki ze zdjęć, także porzucone, z powrotem do projektu i zmianą nazwy.
- * Lista pobiera się sama przy pokazaniu: jest tylko na ekranie wgrywania, tam jej się szuka.
- */
 export function ImageProjectList() {
   const [projects, setProjects] = useState<ImageProject[]>([])
 

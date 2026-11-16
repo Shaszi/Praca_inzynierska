@@ -6,8 +6,6 @@ export function RequireAuth() {
   const { user, isLoading, error } = useAuth()
   const location = useLocation()
 
-  // Błąd sprawdzania sesji dostaje własny ekran. Wcześniej taki przypadek kończył się
-  // spinnerem bez końca, bo isLoading nigdy nie schodziło.
   if (error && !user) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-3 px-4 text-center">
@@ -33,7 +31,6 @@ export function RequireAuth() {
   }
 
   if (!user) {
-    // Pełna lokalizacja, nie tylko pathname — inaczej parametry docelowej strony giną.
     const from = `${location.pathname}${location.search}${location.hash}`
     return <Navigate to="/login" replace state={{ from }} />
   }

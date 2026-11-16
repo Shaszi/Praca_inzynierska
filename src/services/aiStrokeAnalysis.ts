@@ -1,13 +1,6 @@
 import type { StrokeEvaluation } from '../features/practice/utils/strokeEvaluation'
 import { invokeAi } from './aiClient'
 
-/**
- * Komentarz modelu do jednej kreski w trybie z wzorcem.
- *
- * Model nie dostaje obrazka: algorytm (`strokeEvaluation.ts`) policzył już odchylenie,
- * kąt, drżenie i tempo, więc wysyłamy gotowe liczby. Jest to tańsze od miniatury
- * i trafniejsze, bo model niczego nie zgaduje — opisuje pomiary słowami.
- */
 export type StrokeComment = { mistake: string; fix: string }
 
 export type StrokeMetrics = ReturnType<typeof strokeMetrics>
@@ -17,12 +10,6 @@ const round = (value: number, places: number): number => {
   return Math.round(value * factor) / factor
 }
 
-/**
- * Pomiary w formie wysyłanej do modelu. Liczby są zaokrąglone, bo „11.43871231952" i „11.4"
- * znaczą dla modelu to samo, a kolejność pól jest stała — wtedy ten sam ruch daje ten sam
- * prompt. Pola `summary`, `issues[].sentence` i `worstPoint` zostają na kliencie: model ma
- * napisać własny komentarz, nie przeredagować gotowy.
- */
 export function strokeMetrics(evaluation: StrokeEvaluation) {
   return {
     score: Math.round(evaluation.score),
@@ -44,7 +31,6 @@ export function strokeMetrics(evaluation: StrokeEvaluation) {
   }
 }
 
-/** Rzuca `AiError` — błąd nie może udawać komentarza, bo trafiłby do bazy jako ocena. */
 export async function analyzeStroke(
   stepTitle: string,
   evaluation: StrokeEvaluation,

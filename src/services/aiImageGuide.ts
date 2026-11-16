@@ -10,7 +10,6 @@ export type ImageGuideStep = {
   id: string
   title: string
   description: string
-  /** Kontury tego kroku, we współrzędnych pikselowych zdjęcia. */
   strokes: Stroke[]
 }
 
@@ -20,26 +19,17 @@ const GUIDE_BRUSH_SIZE = 6
 
 const toStroke = (points: ContourPoint[]): Stroke => ({
   brushSize: GUIDE_BRUSH_SIZE,
-  // Wzorzec nie niesie czasu: ocena bierze z niego kształt, tempo liczy z kreski użytkownika.
   points: points.map((point) => ({ x: point.x, y: point.y, timestamp: 0 })),
 })
 
-/**
- * Kurs rysowania z wgranego zdjęcia. Kontury liczy przeglądarka z pikseli, a kolejność
- * i dobór linii ustala `planCourse` (obrys → konstrukcja → detal, bez skoków ręki).
- * Model tylko nazywa kroki — nie dotyka geometrii ani kolejności.
- */
 export async function buildContourCourse(
   pixels: Uint8ClampedArray,
   width: number,
   height: number,
   imageBase64: string,
   mediaType: SupportedMediaType,
-  /** Obiekt wskazany stuknięciem; bez maski kontury idą z całego zdjęcia. */
   mask: SubjectMask | null = null,
 ): Promise<ImageGuideStep[]> {
-  // Lasso to obszar, nie sylwetka: krawędzie bierzemy z oryginału, tylko z wnętrza pętli.
-  // Maska z segmentera to sylwetka: tło zamalowujemy, a jej granica staje się obrysem.
   const isLasso = mask?.soft === true
   const source = mask && !isLasso ? isolateSubject(pixels, width, height, mask) : pixels
   const contours = extractContours(source, width, height, isLasso && mask ? { keep: maskContains(mask, width, height) } : {})
@@ -62,7 +52,6 @@ export async function buildContourCourse(
   return steps
 }
 
-/** Nazwa kroku od modelu. `background` liczy się tylko bez maski — z maską tła już nie ma. */
 export type ContourLabel = { i: number; title: string; description: string; background: boolean }
 
 const FALLBACK: Record<ContourRole, { title: string; description: string }> = {
@@ -71,11 +60,6 @@ const FALLBACK: Record<ContourRole, { title: string; description: string }> = {
   detail: { title: 'Detal', description: 'Krótka linia detalu — lekko, z nadgarstka.' },
 }
 
-/**
- * Kroki w kolejności planu, jeden kontur na krok — ocena porównuje kreskę z jedną linią.
- * Brak nazwy od modelu nie wyrzuca kroku: dostaje nazwę po roli. Bez maski linie,
- * które model uznał za tło, wypadają.
- */
 export function buildSteps(plan: PlannedContour[], labels: ContourLabel[], hasMask: boolean): ImageGuideStep[] {
   const byIndex = new Map(labels.map((label) => [label.i, label]))
   const steps: ImageGuideStep[] = []
@@ -92,11 +76,6 @@ export function buildSteps(plan: PlannedContour[], labels: ContourLabel[], hasMa
   return steps
 }
 
-/**
- * Opis konturu dla modelu. Model dostaje gdzie kontur leży, jak jest długi i jaką ma rolę
- * w planie, i odsyła tylko nazwy. Punkty zostają na kliencie, bo pochodzą z pikseli
- * zdjęcia i są dokładne; model myliłby się o kilkanaście procent kadru.
- */
 export type ContourSummary = {
   i: number
   box: [number, number, number, number]
@@ -116,7 +95,6 @@ export function summarizeContours(plan: PlannedContour[], width: number, height:
       i,
       box: [Math.min(...xs) / width, Math.min(...ys) / height, Math.max(...xs) / width, Math.max(...ys) / height],
       len: pathLength(points) / diagonal,
-      // Domknięty = koniec wraca w pobliże początku, w skali własnej długości konturu.
       closed: Math.hypot(last.x - first.x, last.y - first.y) < 0.15 * pathLength(points),
       role,
     }
@@ -127,7 +105,6 @@ export async function labelContours(
   imageBase64: string,
   mediaType: SupportedMediaType,
   contours: ContourSummary[],
-  /** JPEG w base64: te same kontury narysowane na zdjęciu, z numerami kroków. */
   overlayBase64: string,
   hasMask: boolean,
 ): Promise<ContourLabel[]> {
@@ -142,14 +119,8 @@ export async function labelContours(
 }
 
 const OVERLAY_MAX = 1024
-// Kolory na zmianę, żeby sąsiednie linie dało się od siebie odróżnić.
 const OVERLAY_COLORS = ['#e6194b', '#3cb44b', '#4363d8', '#f58231', '#911eb4', '#0aa5a5', '#d6249f', '#808000']
 
-/**
- * Kontury narysowane na (wyciętym) zdjęciu, każdy z numerem przy środku linii. Sama lista
- * ramek nie mówiła modelowi, która linia jest którą — zgadywał po położeniu i nazywał tło
- * „włosami". Z obrazkiem widzi każdą linię tam, gdzie leży.
- */
 export function renderNumberedContours(
   pixels: Uint8ClampedArray,
   width: number,
@@ -167,7 +138,6 @@ export function renderNumberedContours(
   canvas.height = Math.round(height * scale)
   const ctx = canvas.getContext('2d')!
   ctx.drawImage(full, 0, 0, canvas.width, canvas.height)
-  // Zdjęcie przygaszone — ma być tłem dla linii, nie konkurować z nimi.
   ctx.fillStyle = 'rgba(255,255,255,0.55)'
   ctx.fillRect(0, 0, canvas.width, canvas.height)
 
@@ -195,7 +165,6 @@ export function renderNumberedContours(
   return canvas.toDataURL('image/jpeg', 0.85).split(',')[1]
 }
 
-/** Rozmiar własny pliku — w tych pikselach liczymy linie pomocnicze i rysujemy tło. */
 export function readImageSize(url: string): Promise<{ width: number; height: number }> {
   return new Promise((resolve, reject) => {
     const image = new Image()
@@ -207,15 +176,9 @@ export function readImageSize(url: string): Promise<{ width: number; height: num
 
 const SIZE = 512
 const PADDING = 24
-/** Wcześniejsze kroki — szare, żeby model widział kontekst i nie oceniał ich po raz drugi. */
 const DONE_COLOR = '#b4b7bd'
 const NEW_COLOR = '#111827'
 
-/**
- * Dopasowanie obrysu kresek do kwadratu, jak w `StrokeThumbnail`. Bez tego punkty idą
- * w surowych współrzędnych płótna i wszystko poza lewym górnym kwadratem 512×512
- * jest wycinane z obrazka — model opisywał wtedy kreski, których nie widzi.
- */
 export function fitStrokesToSquare(strokes: Stroke[], size = SIZE, padding = PADDING): CanvasView {
   const points = strokes.flatMap((stroke) => stroke.points)
   if (points.length === 0) return { scale: 1, offsetX: 0, offsetY: 0 }
@@ -226,7 +189,6 @@ export function fitStrokesToSquare(strokes: Stroke[], size = SIZE, padding = PAD
   const minY = Math.min(...ys)
   const width = Math.max(Math.max(...xs) - minX, 1)
   const height = Math.max(Math.max(...ys) - minY, 1)
-  // Jedna skala dla obu osi — inaczej rysunek byłby rozciągnięty i kąty przestałyby się zgadzać.
   const scale = (size - padding * 2) / Math.max(width, height)
 
   return {
@@ -236,7 +198,6 @@ export function fitStrokesToSquare(strokes: Stroke[], size = SIZE, padding = PAD
   }
 }
 
-/** Nowa kreska na czarno, poprzednie na szaro — inaczej model musiał zgadywać, co oceniać. */
 function renderUserDrawingToBase64(doneStrokes: Stroke[], newStroke: Stroke): string {
   const canvas = document.createElement('canvas')
   canvas.width = SIZE

@@ -6,22 +6,11 @@ import type { StrokeEvaluation } from '../utils/strokeEvaluation'
 type UseStrokeCommentResult = {
   comment: StrokeComment | null
   isPending: boolean
-  /** Komunikat błędu do pokazania; nie jest komentarzem i nie trafia do bazy. */
   error: string | null
-  /**
-   * Prosi model o komentarz do kreski. `onResolved` dostaje tekst do zapisania
-   * (albo null, gdy model nie odpowiedział) i nie jest wołane, jeśli wywołanie
-   * zostało w międzyczasie porzucone — wtedy ta próba już nie istnieje.
-   */
   request: (stepTitle: string, evaluation: StrokeEvaluation, onResolved: (aiFeedback: string | null) => void) => void
   reset: () => void
 }
 
-/**
- * Jedna analiza AI naraz. Szybkie rysowanie kilku kresek po sobie dawało wcześniej
- * kilka równoległych wywołań, których odpowiedzi ścigały się o ten sam stan — teraz
- * nowa kreska przerywa poprzednie żądanie i tylko najnowsze może cokolwiek ustawić.
- */
 export function useStrokeComment(): UseStrokeCommentResult {
   const [comment, setComment] = useState<StrokeComment | null>(null)
   const [isPending, setIsPending] = useState(false)
@@ -51,8 +40,6 @@ export function useStrokeComment(): UseStrokeCommentResult {
         })
         .catch((failure: unknown) => {
           if (controller.signal.aborted) return
-          // Powód wprost z serwera: „nie dotarł" nie mówi, czy to klucz, limit, czy sieć.
-          // Ocena lokalna jest już pokazana, więc brak komentarza nie blokuje ćwiczenia.
           setError(describeAiError(failure))
           setIsPending(false)
           onResolved(null)

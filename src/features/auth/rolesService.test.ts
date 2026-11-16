@@ -8,7 +8,6 @@ const u = (displayName: string, roles: ManagedUserRow['roles'], id = 'aaaabbbb-1
 })
 
 describe('hasRole', () => {
-  // Lustro warunku z SQL: `role in (target_role, 'admin')`.
   it('administrator spełnia każdą rolę', () => {
     expect(hasRole(['admin'], 'moderator')).toBe(true)
     expect(hasRole(['admin'], 'admin')).toBe(true)
@@ -34,9 +33,6 @@ describe('roleLabel', () => {
 })
 
 describe('matchesRole', () => {
-  // To jest ta nieoczywista decyzja: filtr listy jest DOKŁADNY, a nie dziedziczący.
-  // Administrator jest moderatorem w sensie uprawnień, ale na liście zarządzania
-  // chcesz widzieć, co komu faktycznie nadano.
   it('administrator NIE wpada do filtra moderatorów', () => {
     expect(matchesRole(u('Ala', ['admin']), 'moderator')).toBe(false)
     expect(matchesRole(u('Ala', ['admin']), 'admin')).toBe(true)

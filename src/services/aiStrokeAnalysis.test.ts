@@ -50,8 +50,6 @@ describe('strokeMetrics', () => {
     expect(metrics.segments[0].tremorPx).toBe(1.14)
   })
 
-  // Kolejność kluczy decyduje o treści promptu, bo payload idzie przez JSON.stringify.
-  // Ten sam ruch musi dawać ten sam prompt, inaczej nie da się porównać odpowiedzi.
   it('ma stałą kolejność pól', () => {
     expect(Object.keys(strokeMetrics(evaluation()))).toEqual([
       'score',

@@ -1,6 +1,5 @@
 import type { DailyActivity, DayKey } from './goalProgress'
 
-/** Progi odznak i ich nazwy — dokładnie jak w projekcie. */
 export const BADGES: { days: number; name: string }[] = [
   { days: 3, name: 'Pierwsza iskra' },
   { days: 7, name: 'Tydzień w ogniu' },
@@ -12,9 +11,7 @@ export const BADGES: { days: number; name: string }[] = [
 export type BadgeState = {
   days: number
   name: string
-  /** Zdobyta: seria sięgnęła progu. */
   got: boolean
-  /** Najbliższa niezdobyta — w projekcie ma różową obwódkę i licznik. */
   next: boolean
 }
 
@@ -30,11 +27,9 @@ export function badgeStates(streak: number): BadgeState[] {
 export type Milestone = {
   name: string
   daysLeft: number
-  /** 0–100, postęp od poprzedniego progu do następnego. */
   percent: number
 }
 
-/** Postęp do najbliższej odznaki. Null, gdy wszystkie są zdobyte. */
 export function nextMilestone(streak: number): Milestone | null {
   const index = BADGES.findIndex((badge) => streak < badge.days)
   if (index === -1) return null
@@ -52,7 +47,6 @@ export function nextMilestone(streak: number): Milestone | null {
 
 export type WeekDay = {
   day: DayKey
-  /** Pn, Wt, … */
   label: string
   done: boolean
   isToday: boolean
@@ -66,7 +60,6 @@ function shiftDay(day: DayKey, delta: number): DayKey {
   return shifted.toISOString().slice(0, 10)
 }
 
-/** Siedem dni kończących się dzisiejszym — pasek tygodnia z karty serii. */
 export function weekStrip(activity: DailyActivity[], today: DayKey): WeekDay[] {
   const counts = new Map(activity.map((entry) => [entry.day, entry.completedCount]))
 
@@ -82,7 +75,6 @@ export function weekStrip(activity: DailyActivity[], today: DayKey): WeekDay[] {
   })
 }
 
-/** Ile pełnych godzin zostało do północy — licznik „utrzymaj serię". */
 export function hoursLeftToday(now = new Date()): number {
   return Math.max(0, 23 - now.getHours())
 }

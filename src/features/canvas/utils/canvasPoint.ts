@@ -3,7 +3,6 @@ import type { Point } from '../../../types/drawing'
 
 type PointerSample = Pick<PointerEvent, 'clientX' | 'clientY' | 'timeStamp'>
 
-/** Przybliżenie i przesunięcie widoku. Skala 1 i zerowe przesunięcie = brak transformacji. */
 export type CanvasView = {
   scale: number
   offsetX: number
@@ -12,10 +11,8 @@ export type CanvasView = {
 
 export const IDENTITY_VIEW: CanvasView = { scale: 1, offsetX: 0, offsetY: 0 }
 
-/** Prostokąt w układzie rysunku. */
 export type Bounds = { minX: number; minY: number; maxX: number; maxY: number }
 
-/** Prostokąt obejmujący wszystkie punkty. `null`, gdy nie ma czego obejmować. */
 export function strokesBounds(strokes: { points: Point[] }[]): Bounds | null {
   let minX = Infinity
   let minY = Infinity
@@ -32,13 +29,6 @@ export function strokesBounds(strokes: { points: Point[] }[]): Bounds | null {
   return minX === Infinity ? null : { minX, minY, maxX, maxY }
 }
 
-/**
- * Widok wpisujący `bounds` w płótno: wzorzec wypełnia kadr i stoi na środku, zamiast
- * siedzieć tam, gdzie akurat narysowano go w innym oknie. Skala jest wspólna dla osi X i Y,
- * więc nic się nie rozciąga, i jest to zwykły `CanvasView` — kreski użytkownika przechodzą
- * przez `createPointFromPointerEvent`, które go odwraca, więc ocena dalej porównuje
- * wzorzec i kreskę w jednym układzie.
- */
 export function fitView(
   bounds: Bounds | null,
   width: number,
@@ -47,8 +37,6 @@ export function fitView(
   limits: { min: number; max: number },
 ): CanvasView {
   if (!bounds || width <= 0 || height <= 0) return IDENTITY_VIEW
-  // Zero-wymiarowy wzorzec (pionowa kreska) nie może dzielić przez zero ani wymuszać
-  // skali z osi, której nie ma — stąd dolna granica 1 px.
   const boxWidth = Math.max(1, bounds.maxX - bounds.minX)
   const boxHeight = Math.max(1, bounds.maxY - bounds.minY)
   const usableWidth = Math.max(1, width - 2 * padding)
@@ -61,12 +49,6 @@ export function fitView(
   }
 }
 
-/**
- * Widok, w którym cały obrys `bounds` jest na ekranie, albo `null`, gdy już jest.
- * Najmniejsza zmiana, jaka wystarczy: obrys mieści się w obecnej skali — tylko przesuwamy
- * (dosuwając do krawędzi, nie centrując, żeby kadr nie skakał bez potrzeby); nie mieści
- * się — oddalamy do skali, w której wejdzie, i centrujemy na nim.
- */
 export function revealView(
   view: CanvasView,
   bounds: Bounds,
@@ -88,7 +70,6 @@ export function revealView(
   if (visible) return null
 
   if (boxWidth * view.scale <= usableWidth && boxHeight * view.scale <= usableHeight) {
-    // Przesunięcie o tyle, ile obrys wystaje poza kadr z danej strony.
     const dx = left < padding ? padding - left : right > width - padding ? width - padding - right : 0
     const dy = top < padding ? padding - top : bottom > height - padding ? height - padding - bottom : 0
     return { scale: view.scale, offsetX: view.offsetX + dx, offsetY: view.offsetY + dy }
@@ -102,14 +83,8 @@ export function revealView(
   }
 }
 
-/**
- * Widok pośredni między `from` i `to` dla `t` od 0 do 1. Skala interpolowana
- * logarytmicznie — przy liniowej oddalanie wygląda, jakby zwalniało pod koniec.
- */
 export function lerpView(from: CanvasView, to: CanvasView, t: number, width: number, height: number): CanvasView {
   const scale = from.scale * Math.pow(to.scale / from.scale, t)
-  // Jednostajnie jedzie punkt rysunku na środku ekranu — offset liczymy z niego,
-  // a nie interpolujemy wprost, bo wtedy przy zmianie skali obraz zatacza łuk.
   const cx = width / 2
   const cy = height / 2
   const fromX = (cx - from.offsetX) / from.scale
@@ -123,11 +98,6 @@ export function lerpView(from: CanvasView, to: CanvasView, t: number, width: num
   }
 }
 
-/**
- * Punkty zapisujemy w układzie rysunku, nie ekranu — inaczej po przybliżeniu kreska
- * wylądowałaby w innym miejscu niż wzorzec i ocena porównywałaby nieporównywalne.
- * Dlatego transformacja widoku jest tu odwracana.
- */
 export function createPointFromPointerEvent(
   sample: PointerSample,
   bounds: DOMRect,
@@ -138,14 +108,10 @@ export function createPointFromPointerEvent(
   return {
     x: (screenX - view.offsetX) / view.scale,
     y: (screenY - view.offsetY) / view.scale,
-    // High-resolution epoch time; Date.now() has 1 ms (or coarser) resolution,
-    // which is too imprecise for velocity-based filtering
     timestamp: performance.timeOrigin + sample.timeStamp,
   }
 }
 
-// Browsers deliver at most one pointermove per frame and merge the remaining
-// hardware samples into it. Reading them back recovers the full input resolution.
 export function getPointsFromPointerEvent(
   event: ReactPointerEvent<HTMLCanvasElement>,
   canvas: HTMLCanvasElement,

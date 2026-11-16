@@ -79,7 +79,6 @@ function SessionCard({
   )
 }
 
-/** Kroki jednej sesji. Dociągane dopiero przy rozwinięciu — kart jest kilkanaście. */
 function AttemptList({ sessionId }: { sessionId: string }) {
   const [attempts, setAttempts] = useState<PracticeAttempt[] | null>(null)
   const [error, setError] = useState<string | null>(null)

@@ -46,7 +46,6 @@ export function normalizeStroke(value: unknown): Stroke | null {
     }
   }
 
-  // Legacy migration: old format stored a stroke as Point[].
   if (Array.isArray(value) && value.every((point) => isPoint(point))) {
     return {
       brushSize: DEFAULT_BRUSH_SIZE,
@@ -95,12 +94,6 @@ export function isStrokeCollectionEmpty(strokes: Stroke[]): boolean {
   return strokes.length === 0 || strokes.every((stroke) => stroke.points.length === 0)
 }
 
-/**
- * Parsowanie pliku JSON wrzuconego przez użytkownika — jedyna granica zaufania dla
- * danych z dysku. Celowo używa `normalizeReference`, a nie samego type guarda: ona
- * kopiuje po białej liście, więc obce pola z obcego pliku nie wchodzą do stanu aplikacji
- * ani dalej do bazy. Przy okazji akceptuje stary format kresek jako gołe `Point[]`.
- */
 export function parseImportedReference(jsonText: string): StorageResult<ReferenceDrawing | null> {
   let parsed: unknown
   try {

@@ -8,9 +8,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  // Role trzymane razem z id właściciela. Dzięki temu po przelogowaniu nie da się
-  // przez chwilę zobaczyć ról poprzedniego użytkownika, a stan „jeszcze nie wiem"
-  // wynika z danych, nie z osobnej flagi.
   const [loadedRoles, setLoadedRoles] = useState<{ userId: string; roles: Role[] } | null>(null)
 
   useEffect(() => {
@@ -26,8 +23,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setIsLoading(false)
       })
       .catch(() => {
-        // Bez tego bloku błąd sieci zostawiał isLoading na true na zawsze,
-        // a strażnik tras pokazywał spinner bez końca i bez żadnego komunikatu.
         if (cancelled) return
         setError('Nie udało się sprawdzić sesji. Sprawdź połączenie i odśwież stronę.')
         setIsLoading(false)
@@ -72,8 +67,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       session,
       user: session?.user ?? null,
-      // Jedno isLoading obejmuje sesję i role, żeby strażnik tras nie przepuścił
-      // użytkownika, zanim wiadomo, czy ma rolę.
       isLoading: isLoading || (userId !== null && roles === null),
       error,
       roles: roles ?? [],

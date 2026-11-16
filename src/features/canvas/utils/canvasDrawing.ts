@@ -11,7 +11,6 @@ type DrawStrokeOptions = {
   view?: CanvasView
 }
 
-// Punkt startu jest zawsze miętowy — mówi „tu zacznij", więc nie zależy od koloru opaski.
 const GUIDE_START = '#3ee6a8'
 
 
@@ -21,14 +20,12 @@ type RenderSceneOptions = {
   height: number
   dpr: number
   referenceStrokes: Stroke[]
-  /** Od dołu do góry: layers[0] jest najniżej. */
   layers: Layer[]
   layerCanvases: Map<string, HTMLCanvasElement>
   activeStroke: Stroke | null
   referenceStrokeColor: string
   userStrokeColor: string
   view?: CanvasView
-  /** Faza wędrującego kreskowania wzorca, w pikselach rysunku. */
   guideDashOffset?: number
 }
 
@@ -40,8 +37,6 @@ type ReplayLayerOptions = {
   view?: CanvasView
 }
 
-// Grubość zostaje w jednostkach rysunku, więc transformacja ją skaluje: przybliżony
-// tusz jest grubszy, tak jak w każdym programie graficznym.
 function applyView(context: CanvasRenderingContext2D, dpr: number, view: CanvasView): void {
   const k = dpr * view.scale
   context.setTransform(k, 0, 0, k, dpr * view.offsetX, dpr * view.offsetY)
@@ -110,7 +105,6 @@ export function drawStroke(
   if (points.length === 2) {
     context.lineTo(points[1].x, points[1].y)
   } else {
-    // Draw smooth curve through midpoints between consecutive points
     let mx = (points[0].x + points[1].x) / 2
     let my = (points[0].y + points[1].y) / 2
     context.lineTo(mx, my)
@@ -125,13 +119,6 @@ export function drawStroke(
   context.stroke()
 }
 
-/**
- * Kreska aktualnego kroku. Ma krzyczeć „zrób to teraz", więc dostaje trzy warstwy:
- * szeroką poświatę, wyraźną linię z wędrującym kreskowaniem i kropkę w punkcie startu.
- *
- * Kropka startu nie jest ozdobą: evaluateStroke wykrywa kreskę narysowaną od złego
- * końca i obniża za to ocenę, więc użytkownik musi wiedzieć, gdzie zaczynać.
- */
 export function drawGuideStroke(
   context: CanvasRenderingContext2D,
   stroke: Stroke,
@@ -141,7 +128,6 @@ export function drawGuideStroke(
 
   const { color, dpr, view = IDENTITY_VIEW, dashOffset = 0 } = options
 
-  // Opaska pod aktywną kreską: fiolet, krycie .35, grubość 14 — wartości z projektu.
   drawStroke(context, stroke, {
     color,
     dpr,
@@ -150,18 +136,15 @@ export function drawGuideStroke(
     lineWidthOverride: 16,
   })
 
-  // Wędrujące kreskowanie zostaje — użytkownik chciał je zachować.
   drawStroke(context, stroke, {
     color,
     dpr,
     view,
     alpha: 0.9,
     dashPattern: [11, 9],
-    // Ujemne, żeby kreskowanie wędrowało w stronę rysowania, nie przeciwnie.
     dashOffset: -dashOffset,
   })
 
-  // Punkt startu jest miętowy, bo mówi „tu zacznij", a nie „tu jest błąd".
   const start = stroke.points[0]
   configureContext(context, dpr, view, GUIDE_START, 1, 1)
   context.beginPath()
@@ -194,11 +177,6 @@ function applyStamps(
   context.globalCompositeOperation = 'source-over'
 }
 
-/**
- * Odtwarza bitmapę warstwy z jej operacji: kreski po kolei, a stemple wymazania
- * wplecione tam, gdzie powstały. Stemple zawsze na końcu wymazywałyby kreskę
- * poprowadzoną przez wcześniejszą dziurę, co jest widoczne i błędne.
- */
 export function replayLayer(
   context: CanvasRenderingContext2D,
   layer: Layer,
@@ -208,7 +186,6 @@ export function replayLayer(
 
   const stampsAfter = new Map<number, EraseStamp[]>()
   for (const stamp of layer.erases) {
-    // Stempel spoza zakresu (np. po cofnięciu kresek) przypinamy do końca.
     const key = Math.max(0, Math.min(stamp.afterStroke, layer.strokes.length))
     const existing = stampsAfter.get(key)
     if (existing) existing.push(stamp)
@@ -217,7 +194,6 @@ export function replayLayer(
 
   applyStamps(context, stampsAfter.get(0), dpr, view)
   for (let index = 0; index < layer.strokes.length; index += 1) {
-    // Kolor z kreski wygrywa: zmiana pędzla nie przemalowuje starych linii.
     const stroke = layer.strokes[index]
     drawStroke(context, stroke, {
       color: stroke.color ?? color,
@@ -231,7 +207,6 @@ export function replayLayer(
   context.globalAlpha = 1
 }
 
-/** Składa gotowe bitmapy warstw. Bitmapy są w pikselach urządzenia, więc transformacja tożsamościowa. */
 export function compositeLayers(
   context: CanvasRenderingContext2D,
   layers: Layer[],

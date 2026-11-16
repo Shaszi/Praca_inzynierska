@@ -3,14 +3,6 @@ import { Spinner } from '../../components/ui'
 import { useAuth } from './authContext'
 import { ROLE_LABELS, type Role } from './rolesService'
 
-/**
- * Strażnik tras dla ról. Zalogowanego bez uprawnień NIE wysyła na logowanie —
- * to byłaby ślepa uliczka, bo ponowne logowanie nic nie zmieni. Pokazuje komunikat.
- *
- * Gatuje wyłącznie nawigację. Każdy zapis z uprawnieniami jest sprawdzany ponownie
- * w bazie (`has_role` w politykach i w ciele funkcji), więc nieaktualna rola
- * w przeglądarce nic nie daje.
- */
 export function RequireRole({ role }: { role: Role }) {
   const { isLoading, hasRole } = useAuth()
 

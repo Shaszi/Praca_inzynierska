@@ -5,7 +5,6 @@ import { Button } from '../../../../components/ui'
 import { LibraryGrid, type LibraryAction } from '../../../teacher/components/LibraryGrid'
 import type { ReferenceDrawing } from '../../../../types/drawing'
 
-/** Okno wyboru wzorca: siatka z biblioteki, jedna akcja — wybór kończy się zamknięciem okna. */
 export function ReferencePickerModal({
   references,
   isLoading,

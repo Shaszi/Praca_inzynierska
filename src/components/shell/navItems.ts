@@ -8,7 +8,6 @@ export type NavItem = {
   end?: boolean
 }
 
-// Etykiety i kolejność wprost z projektu.
 const BASE_ITEMS: NavItem[] = [
   { to: '/app', label: 'Start', icon: HomeIcon, end: true },
   { to: '/app/practice', label: 'Ćwicz', icon: PencilIcon, end: true },
@@ -18,7 +17,6 @@ const BASE_ITEMS: NavItem[] = [
   { to: '/app/progress', label: 'Postęp', icon: ChartIcon },
 ]
 
-/** Pozycje menu dla ról — dokładane dopiero, gdy rola jest znana. */
 export function navItemsFor(hasRole: (role: 'moderator' | 'admin') => boolean): NavItem[] {
   return [
     ...BASE_ITEMS,

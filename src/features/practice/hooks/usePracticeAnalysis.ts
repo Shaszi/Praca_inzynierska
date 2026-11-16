@@ -15,7 +15,6 @@ export function usePracticeAnalysis(referenceStroke: Stroke | null): UsePractice
   const [evaluation, setEvaluation] = useState<StrokeEvaluation | null>(null)
   const rafRef = useRef<number | null>(null)
 
-  // W trakcie rysowania liczymy tylko odległość od wzoru — co klatkę, bez blokowania rysowania.
   const analyzeActiveStroke = useCallback(
     (stroke: Stroke | null) => {
       if (!stroke || !referenceStroke) {
@@ -53,7 +52,6 @@ export function usePracticeAnalysis(referenceStroke: Stroke | null): UsePractice
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current)
     }
   }, [])
-
 
   return { evaluation, live, analyzeActiveStroke, evaluateCompletedStroke, resetAnalysis }
 }

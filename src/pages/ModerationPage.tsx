@@ -26,7 +26,7 @@ export function ModerationPage() {
   const decide = useCallback(async (id: string, approved: boolean) => {
     const reason = approved
       ? undefined
-      : // Powód trafia do autora, więc pytamy o niego zamiast odrzucać bez słowa.
+      :
         (window.prompt('Powód odrzucenia (zobaczy go autor):') ?? undefined)
 
     if (!approved && !reason) return

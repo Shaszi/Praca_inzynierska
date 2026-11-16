@@ -16,7 +16,6 @@ export function readFileAsBase64(file: File): Promise<{ base64: string; mediaTyp
 
 export type LoadedPhoto = { pixels: Uint8ClampedArray; width: number; height: number; image: HTMLImageElement }
 
-/** Zdjęcie przez płótno: stamtąd biorą się piksele dla detekcji konturów. */
 export async function readPixels(url: string): Promise<LoadedPhoto> {
   const image = new Image()
   image.src = url

@@ -1,36 +1,12 @@
-/**
- * Wyciąganie konturów ze zdjęcia — lokalnie, bez modelu.
- *
- * Powód: model proszony o współrzędne linii pomocniczych mylił się o kilkanaście procent
- * szerokości kadru (oś symetrii lądowała na krawędzi przedmiotu). Piksele zdjęcia takiego
- * problemu nie mają: kontur policzony z obrazu leży na obiekcie z definicji. Modelowi
- * zostaje to, w czym jest dobry — nazwanie i uporządkowanie konturów w kroki rysowania.
- *
- * Potok jest Canny'm bez histerezy: rozmycie, gradient Sobela, wygaszanie niemaksimów,
- * próg percentylowy, śledzenie łańcuchów, upraszczanie. Histerezy nie ma, bo drugi próg
- * dokłada parametr do strojenia, a przy rysowaniu i tak odrzucamy krótkie łańcuchy.
- */
 
 export type ContourPoint = { x: number; y: number }
 
 export type ContourOptions = {
-  /** Jaki ułamek najsilniejszych krawędzi zostaje. Mniej = tylko wyraźne kontury. */
   edgeQuantile?: number
-  /** Krótsze łańcuchy (w pikselach obrazu) lecą do kosza jako szum. */
   minLengthPx?: number
-  /** Tolerancja upraszczania łamanej. */
   simplifyEpsilonPx?: number
-  /**
-   * Jak blisko siebie mogą biec dwie linie. Bliżej = to ta sama krawędź narysowana dwa razy
-   * (np. dwa boki cienkiego pasma włosów) i krótsza jest wycinana. Domyślnie 0,6% przekątnej.
-   */
   minGapPx?: number
-  /**
-   * Które piksele wolno brać pod uwagę (np. wnętrze lassa). Krawędzie poza nimi są
-   * kasowane przed śledzeniem łańcuchów, więc sama granica zaznaczenia nie staje się linią.
-   */
   keep?: (x: number, y: number) => boolean
-  /** Górny limit konturów — do promptu i na płótno nie ma sensu brać tysiąca. */
   maxContours?: number
 }
 
@@ -43,14 +19,8 @@ const DEFAULTS: Required<Omit<ContourOptions, 'minGapPx' | 'keep'>> = {
   maxContours: 120,
 }
 
-/**
- * Gradient poniżej tej wartości to nie krawędź, tylko ziarno matrycy albo łagodny
- * cień. Kwantyl sam tego nie odsieje: na zdjęciu z dużym gładkim tłem „najsilniejsze
- * 4 procent" to nadal prawie zero, więc tło zalewało wynik tysiącem śmieciowych linii.
- */
 const NOISE_FLOOR = 18
 
-/** Luminancja ITU-R BT.601 — ta sama, której używa konwersja do szarości w grafice. */
 export function toGrayscale(rgba: Uint8ClampedArray, width: number, height: number): Float32Array {
   const gray = new Float32Array(width * height)
   for (let i = 0, p = 0; i < gray.length; i++, p += 4) {
@@ -59,7 +29,6 @@ export function toGrayscale(rgba: Uint8ClampedArray, width: number, height: numb
   return gray
 }
 
-/** Rozmycie pudełkowe 3×3. Tłumi ziarno, przez które każdy piksel byłby krawędzią. */
 export function blur3(source: Float32Array, width: number, height: number): Float32Array {
   const out = new Float32Array(source.length)
   for (let y = 0; y < height; y++) {
@@ -84,7 +53,6 @@ export function blur3(source: Float32Array, width: number, height: number): Floa
 
 export type Gradient = { magnitude: Float32Array; angle: Float32Array }
 
-/** Sobel 3×3: siła i kierunek zmiany jasności w każdym pikselu. */
 export function sobel(gray: Float32Array, width: number, height: number): Gradient {
   const magnitude = new Float32Array(gray.length)
   const angle = new Float32Array(gray.length)
@@ -108,19 +76,13 @@ export function sobel(gray: Float32Array, width: number, height: number): Gradie
   return { magnitude, angle }
 }
 
-/** Próg na kwantylu: niezależny od kontrastu zdjęcia, bo patrzy na rozkład, nie na wartość. */
 export function quantileThreshold(magnitude: Float32Array, quantile: number): number {
-  // Kwantyl liczony tylko z pikseli, które w ogóle są kandydatami na krawędź.
   const candidates = Float32Array.from(magnitude.filter((value) => value > NOISE_FLOOR)).sort()
   if (candidates.length === 0) return Infinity
   const index = Math.min(candidates.length - 1, Math.max(0, Math.floor(candidates.length * quantile)))
   return Math.max(NOISE_FLOOR, candidates[index])
 }
 
-/**
- * Wygaszanie niemaksimów: zostaje tylko grzbiet krawędzi, jeden piksel szerokości.
- * Bez tego Sobel daje pasma po 3–4 piksele i śledzenie plącze się w nich zamiast iść wzdłuż.
- */
 export function thinEdges(gradient: Gradient, width: number, height: number, threshold: number): Uint8Array {
   const { magnitude, angle } = gradient
   const edges = new Uint8Array(magnitude.length)
@@ -129,7 +91,6 @@ export function thinEdges(gradient: Gradient, width: number, height: number, thr
       const i = y * width + x
       const value = magnitude[i]
       if (value < threshold) continue
-      // Kierunek zaokrąglony do jednej z czterech osi sąsiedztwa.
       const sector = (Math.round(angle[i] / (Math.PI / 4)) + 4) % 4
       const step = sector === 0 ? 1 : sector === 1 ? width + 1 : sector === 2 ? width : width - 1
       if (value >= magnitude[i - step] && value >= magnitude[i + step]) edges[i] = 1
@@ -160,11 +121,6 @@ function countNeighbours(edges: Uint8Array, width: number, height: number, x: nu
   return count
 }
 
-/**
- * Śledzenie łańcuchów: idziemy od piksela do sąsiada, aż nie ma dokąd.
- * Najpierw od końcówek (jeden sąsiad), bo łańcuch zaczęty w środku rozpada się na dwa kawałki.
- * Pętle (kontur zamknięty) nie mają końcówek i są brane w drugim przebiegu.
- */
 export function traceChains(edges: Uint8Array, width: number, height: number): ContourPoint[][] {
   const visited = new Uint8Array(edges.length)
   const chains: ContourPoint[][] = []
@@ -213,7 +169,6 @@ export function pathLength(points: ContourPoint[]): number {
   return total
 }
 
-/** Ramartowanie-Douglas-Peucker: zdejmuje punkty, które leżą na prostej między sąsiadami. */
 export function simplify(points: ContourPoint[], epsilon: number): ContourPoint[] {
   if (points.length < 3) return points
   const first = points[0]
@@ -297,10 +252,6 @@ export function removeOverlaps(
   return kept
 }
 
-/**
- * Pełny potok: piksele RGBA → lista konturów w układzie obrazu, od najdłuższego.
- * Najdłuższe kontury pierwsze, bo to one niosą kształt, a nie detal.
- */
 export function extractContours(
   rgba: Uint8ClampedArray,
   width: number,

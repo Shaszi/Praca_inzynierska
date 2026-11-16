@@ -15,9 +15,7 @@ export type LibraryAction = {
   label: string
   onRun: (id: string) => void | Promise<void>
   variant?: 'primary' | 'secondary' | 'ghost' | 'danger'
-  /** Gdy zwróci false, przycisk nie pojawia się na tej karcie. */
   when?: (reference: ReferenceDrawing) => boolean
-  /** Dwustopniowe potwierdzenie — dla akcji nieodwracalnych. */
   confirm?: boolean
 }
 
@@ -32,7 +30,6 @@ export function LibraryGrid({
   isLoading: boolean
   emptyText: string
   actions: LibraryAction[]
-  /** Plakietka publikacji nie ma sensu przy wyborze wzorca do ćwiczenia ani przy rozgrzewkach. */
   showStatus?: boolean
 }) {
   const [confirming, setConfirming] = useState<string | null>(null)

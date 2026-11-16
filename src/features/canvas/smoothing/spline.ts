@@ -1,7 +1,5 @@
 import type { Point } from '../../../types/drawing'
 
-// Centripetal parameterization (alpha = 0.5) avoids cusps and self-intersections
-// that uniform Catmull-Rom produces on unevenly spaced control points.
 const ALPHA = 0.5
 const MIN_KNOT_GAP = 1e-4
 
@@ -17,8 +15,6 @@ function mix(a: Vec2, b: Vec2, ta: number, tb: number, t: number): Vec2 {
   return { x: wa * a.x + wb * b.x, y: wa * a.y + wb * b.y }
 }
 
-// Evaluates the segment between p1 and p2 at local parameter u ∈ [0, 1]
-// (Barry–Goldman pyramidal formulation).
 function evaluateSegment(p0: Point, p1: Point, p2: Point, p3: Point, u: number): Point {
   const t0 = 0
   const t1 = knot(t0, p0, p1)
@@ -48,8 +44,6 @@ function reflect(anchor: Point, neighbour: Point): Point {
   }
 }
 
-// Interpolating spline through all control points, sampled roughly every `spacing` px.
-// Unlike midpoint/Bezier smoothing, the curve passes exactly through each control point.
 export function resampleCatmullRom(points: Point[], spacing: number): Point[] {
   if (points.length < 3) return points.slice()
 

@@ -2,7 +2,6 @@ import { Link } from 'react-router-dom'
 import { plural } from '../../../../utils/plural'
 import type { Challenge } from '../../utils/dailyChallenge'
 
-/** Wyzwanie dnia — różowa karta z dekoracją elips. */
 export function DailyChallengeCard({ challenge }: { challenge: Challenge }) {
   return (
     <section className="relative flex flex-col gap-3 overflow-hidden rounded-[24px] bg-pink p-[22px] text-on-accent lg:col-span-5">

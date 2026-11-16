@@ -48,7 +48,6 @@ const CHALLENGES: Challenge[] = [
 ]
 
 export function challengeForDay(today: DayKey): Challenge {
-  // Suma cyfr daty wystarczy: zmienia się codziennie i nie wymaga biblioteki.
   const seed = today.split('-').reduce((sum, part) => sum + Number(part), 0)
   return CHALLENGES[seed % CHALLENGES.length]
 }

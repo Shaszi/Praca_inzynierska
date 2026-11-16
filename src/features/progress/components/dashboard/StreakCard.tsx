@@ -1,7 +1,6 @@
 import { plural } from '../../../../utils/plural'
 import type { Milestone, WeekDay } from '../../utils/streakRewards'
 
-// Gradient markera. Reguła z projektu: tylko kreska, logo i pasek postępu.
 const MARKER = 'linear-gradient(90deg,#ff5fa8 0%,#ff9a3d 55%,#ffd84a 100%)'
 
 function Flame({ done }: { done: boolean }) {
@@ -18,7 +17,6 @@ function Flame({ done }: { done: boolean }) {
   )
 }
 
-/** Seria — największa karta, bo to główny powód, żeby dziś narysować kreskę. */
 export function StreakCard({
   streak,
   isTodayDone,

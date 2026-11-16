@@ -2,7 +2,6 @@ import { supabase } from '../../lib/supabase'
 
 export type Role = 'moderator' | 'admin'
 
-/** Nazwy po polsku do pokazania na stronie. */
 export const ROLE_LABELS: Record<Role, string> = {
   admin: 'Administrator',
   moderator: 'Moderator',
@@ -10,16 +9,10 @@ export const ROLE_LABELS: Record<Role, string> = {
 
 export const USER_LABEL = 'Użytkownik'
 
-/**
- * Lustro warunku z SQL (`role in (target_role, 'admin')`): administrator spełnia
- * każdą rolę. Czysta funkcja, bo gatuje tylko nawigację — każdy zapis z uprawnieniami
- * jest i tak sprawdzany ponownie w bazie.
- */
 export function hasRole(roles: Role[], role: Role): boolean {
   return roles.includes(role) || roles.includes('admin')
 }
 
-/** Najwyższa rola do wyświetlenia przy użytkowniku. */
 export function roleLabel(roles: Role[]): string {
   if (roles.includes('admin')) return ROLE_LABELS.admin
   if (roles.includes('moderator')) return ROLE_LABELS.moderator
@@ -41,7 +34,6 @@ export function matchesRole(entry: ManagedUserRow, filter: RoleFilter): boolean 
   return entry.roles.includes(filter)
 }
 
-/** Szukanie po nazwie w dowolnym miejscu, po id tylko od początku — id nikt nie pamięta w środku. */
 export function matchesQuery(entry: ManagedUserRow, query: string): boolean {
   const needle = query.trim().toLowerCase()
   if (needle === '') return true
@@ -49,7 +41,6 @@ export function matchesQuery(entry: ManagedUserRow, query: string): boolean {
 }
 
 export const rolesService = {
-  /** Przy błędzie zwraca pustą listę — fail closed, brak uprawnień zamiast zgadywania. */
   async loadRoles(): Promise<Role[]> {
     const { data, error } = await supabase.from('user_roles').select('role')
     if (error || !data) return []

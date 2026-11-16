@@ -1,5 +1,3 @@
-// Logika celu i kalendarza aktywności. Dni są reprezentowane jako 'YYYY-MM-DD'
-// w strefie czasowej użytkownika, dzięki czemu obliczenia nie zależą od strefy przeglądarki.
 
 export type DayKey = string
 
@@ -15,9 +13,7 @@ export type Goal = {
 
 export type GoalSummary = {
   goalDays: number
-  /** Liczba różnych dni (od rozpoczęcia celu) z co najmniej jednym ukończonym rysunkiem. */
   daysDone: number
-  /** 0–1, zaokrąglone w dół do pełnych dni. */
   fraction: number
   isReached: boolean
   isTodayDone: boolean
@@ -91,18 +87,12 @@ export function computeStreaks(activity: DailyActivity[], today: DayKey): Streak
     previous = day
   }
 
-  // Bieżąca seria trwa, jeśli ostatni aktywny dzień to dziś albo wczoraj
-  // (dzisiejszy dzień jeszcze się nie skończył).
   const last = days.at(-1)
   const current = last !== undefined && daysBetween(last, today) <= 1 ? run : 0
 
   return { current, longest }
 }
 
-/**
- * Siatka kalendarza w układzie tygodni (poniedziałek–niedziela), kończąca się na tygodniu z `today`.
- * Zwraca tablicę kolumn: każda kolumna to 7 dni jednego tygodnia.
- */
 export function buildCalendar(activity: DailyActivity[], today: DayKey, weeks: number): CalendarCell[][] {
   const counts = new Map(activity.map((entry) => [entry.day, entry.completedCount]))
   const weekday = (toDate(today).getUTCDay() + 6) % 7 // 0 = poniedziałek

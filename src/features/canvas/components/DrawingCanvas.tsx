@@ -26,16 +26,8 @@ type DrawingCanvasProps = {
   userStrokeColor?: string
   referenceStrokeColor?: string
   backgroundImageUrl?: string
-  /** Pozwala rodzicowi ustawić nakładki w układzie rysunku (np. marker błędu). */
   onViewChange?: (view: CanvasView) => void
-  /** Obrys, który ma wypełnić kadr. Bez niego płótno startuje 1:1. */
   fitBounds?: Bounds | null
-  /**
-   * Własny rozmiar zdjęcia tła w jednostkach rysunku. Podany — zdjęcie zajmuje prostokąt
-   * od (0,0) do (width,height) układu rysunku, więc leży dokładnie tam, gdzie linie
-   * pomocnicze liczone w pikselach zdjęcia. Bez niego zdjęcie wypełnia kadr przez
-   * `object-contain` i z niczym się nie pokrywa.
-   */
   backgroundImageSize?: { width: number; height: number } | null
 }
 
@@ -61,11 +53,8 @@ export function DrawingCanvas({
   fitBounds = null,
   backgroundImageSize = null,
 }: DrawingCanvasProps) {
-  // Imperative cursor ref — no React state, zero re-renders on pointermove
   const cursorRef = useRef<HTMLDivElement>(null)
-  // Widok w stanie Reacta: zmienia się przy tyknięciu kółka, nie co ruch wskaźnika.
   const [view, setView] = useState<CanvasView>(IDENTITY_VIEW)
-  // Domyślne kolory płótna z tokenów, żeby strony, które ich nie podają, też szły za motywem.
   const colors = useCanvasColors()
 
   const handleViewChange = useCallback(
@@ -127,8 +116,6 @@ export function DrawingCanvas({
     [onPointerMove, updateCursorPreview],
   )
 
-  // Cursor size derived from brushSize + tool — only recomputed when those change.
-  // Mnożone przez skalę, bo pędzel ma na ekranie taką grubość, jaką naprawdę zostawi.
   const cursorRadius = (tool === 'eraser' ? brushSize * 1.25 : brushSize) * view.scale
   const cursorDiameter = cursorRadius * 2
 
@@ -136,11 +123,8 @@ export function DrawingCanvas({
     <div
       ref={containerRef}
       className="relative h-full w-full overflow-hidden rounded-[22px] border border-line bg-paper-dim"
-      // Kropkowa siatka kanwy, gęstsza niż siatka tła — jak blat szkicownika w projekcie.
       style={{ backgroundImage: 'var(--canvas-dots)', backgroundSize: '22px 22px' }}
     >
-      {/* Background image — lowest layer. Jedzie z widokiem, inaczej po przybliżeniu
-          zdjęcie zostałoby na miejscu, a rysunek odjechał. */}
       {backgroundImageUrl && (
         <div
           className="pointer-events-none absolute inset-0"
@@ -161,7 +145,6 @@ export function DrawingCanvas({
         </div>
       )}
 
-      {/* Canvas — drawing surface */}
       <CanvasRenderer
         canvasRef={canvasRef}
         onPointerDown={handlePointerDown}
@@ -172,10 +155,8 @@ export function DrawingCanvas({
         hideCursor={showCursorPreview}
       />
 
-      {/* Guide overlay — on top of canvas so it's always visible */}
       <CanvasOverlay guide={guide} />
 
-      {/* Cursor circle — topmost layer, always above strokes */}
       {showCursorPreview && (
         <div
           ref={cursorRef}
@@ -187,7 +168,6 @@ export function DrawingCanvas({
             width: cursorDiameter,
             height: cursorDiameter,
             transform: 'translate(-50%, -50%)',
-            // Transition only for size changes (brush slider), never for position
             transition: 'width 80ms, height 80ms',
           }}
         />

@@ -12,7 +12,6 @@ import { parseImportedReference } from '../features/teacher/utils/referenceValid
 import type { ReferenceDrawing } from '../types/drawing'
 import { supabase } from '../lib/supabase'
 
-/** Zakładki biblioteki. `available` z serwisu jest dla ćwiczenia, nie pokazujemy go tutaj. */
 type LibraryTab = Exclude<LibraryFilter, 'available'>
 
 const EMPTY_TEXT: Record<LibraryTab, string> = {
@@ -72,7 +71,6 @@ export function LibraryPage() {
     [refresh],
   )
 
-  /** Plik z dysku nie trafia do bazy — jedzie do ćwiczenia w stanie nawigacji. */
   const importLocal = useCallback(
     async (file: File) => {
       setIsImporting(true)

@@ -1,4 +1,3 @@
-// Szkic studium kuli: linie konstrukcyjne (akcent, przerywane) i kreski "ucznia" rysowane animacją.
 export function SketchIllustration({ className = '' }: { className?: string }) {
   return (
     <svg viewBox="0 0 400 320" className={className} role="img" aria-label="Szkic kuli z liniami konstrukcyjnymi">

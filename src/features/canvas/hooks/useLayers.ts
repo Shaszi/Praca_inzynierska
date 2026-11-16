@@ -3,7 +3,6 @@ import { useHistory } from '../../../hooks/useHistory'
 import type { Layer, Stroke } from '../../../types/drawing'
 import { cloneStrokes } from '../../../utils/strokes'
 
-/** Warstwa, na której liczy się ocena. Reguła z projektu: punkty idą tylko z „Ćwiczenia". */
 export const PRACTICE_LAYER_ID = 'cw'
 
 function createLayer(id: string, name: string): Layer {
@@ -20,18 +19,11 @@ function cloneLayers(layers: Layer[]): Layer[] {
 
 const initialLayers = (): Layer[] => [createLayer(PRACTICE_LAYER_ID, 'Ćwiczenie')]
 
-/**
- * Warstwy jak przezroczyste kalki: layers[0] jest najniżej.
- *
- * Historia obejmuje całą tablicę warstw, więc cofanie działa też na dodaniu,
- * usunięciu i przełożeniu warstwy, nie tylko na kreskach.
- */
 export function useLayers() {
   const { state, set, undo, redo, canUndo, canRedo } = useHistory<Layer[]>(initialLayers(), {
     clone: cloneLayers,
   })
   const [activeLayerId, setActiveLayerId] = useState(PRACTICE_LAYER_ID)
-  // Podgląd wymazywania: jedno pociągnięcie gumką = jeden wpis w historii.
   const [erasePreview, setErasePreview] = useState<Layer[] | null>(null)
 
   const layers = erasePreview ?? state.present
@@ -40,7 +32,6 @@ export function useLayers() {
     [activeLayerId, layers],
   )
 
-  /** Kreski wszystkich widocznych warstw, od dołu — to, co widzi ocena, zapis i miniatury. */
   const flatStrokes = useMemo(
     () => layers.filter((layer) => layer.visible).flatMap((layer) => layer.strokes),
     [layers],
@@ -66,11 +57,6 @@ export function useLayers() {
     [activeLayerId, set, state.present],
   )
 
-  /**
-   * Usuwa kreski oznaczone danym krokiem wzorca. Po numerze kroku, nie przez cofnięcie
-   * historii: na szczycie historii może stać wymazanie albo zmiana warstwy, a tożsamość
-   * obiektu nie przeżywa klonowania w historii.
-   */
   const removeStrokesForStep = useCallback(
     (stepIndex: number) => {
       const next = state.present.map((layer) => ({
@@ -94,7 +80,6 @@ export function useLayers() {
 
   const removeLayer = useCallback(
     (id: string) => {
-      // Ostatnia warstwa zostaje — bez niej nie ma gdzie rysować.
       if (state.present.length <= 1) return
       const remaining = state.present.filter((layer) => layer.id !== id)
       set(remaining)
@@ -134,7 +119,6 @@ export function useLayers() {
     setErasePreview(null)
   }, [erasePreview, set])
 
-  // Przez set, nie przez podmianę stanu: czyszczenie ma dać się cofnąć.
   const clear = useCallback(() => {
     setErasePreview(null)
     set(initialLayers())
@@ -170,11 +154,6 @@ export function useLayers() {
   }
 }
 
-/**
- * Opakowanie płaskiej tablicy kresek w jedną warstwę — dla ekranów, które nie mają
- * panelu warstw. Memoizowane, bo nowa tożsamość tablicy unieważnia bitmapy i wymusza
- * pełny replay przy każdym renderze.
- */
 export function useSingleLayer(strokes: Stroke[]): Layer[] {
   return useMemo(
     () => [{ id: 'base', name: 'Rysunek', visible: true, opacity: 1, strokes, erases: [] }],

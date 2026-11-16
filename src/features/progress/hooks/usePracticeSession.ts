@@ -9,34 +9,21 @@ type SessionParams = {
   referenceId?: string | null
   photoPath?: string | null
   course?: unknown[] | null
-  /** Wznowiony projekt: dopisujemy do istniejącej sesji zamiast zakładać nową. */
   existingSessionId?: string | null
 }
 
 type UsePracticeSessionResult = {
-  /** Zapisuje próbę; sesja w bazie jest tworzona leniwie przy pierwszej próbie. */
   recordAttempt: (attempt: Omit<Parameters<typeof progressService.recordAttempt>[0], 'sessionId'>) => void
-  /** Oznacza rysunek jako ukończony — to on liczy się do dziennego celu. */
   complete: (finalStrokes: Stroke[]) => Promise<void>
-  /** Porzuca próbę danego kroku: usuwa wiersz z bazy i wycofuje jej wynik ze średniej. */
   discardAttempt: (stepIndex: number) => void
-  /** Porzuca bieżącą sesję (np. po zmianie wzorca lub wyczyszczeniu płótna). */
   reset: () => void
-  /** Zapisuje stan w trakcie, żeby dało się wrócić do projektu na tym samym kroku. */
   saveProgress: (stepIndex: number, strokes: Stroke[]) => void
-  /** Zmienia nazwę sesji; zwraca nazwę po oczyszczeniu. */
   rename: (title: string) => Promise<string>
   saveError: string | null
 }
 
-/**
- * Zapisuje przebieg ćwiczenia w bazie. Błędy zapisu nie blokują rysowania —
- * są tylko raportowane przez `saveError`.
- */
 export function usePracticeSession(params: SessionParams | null): UsePracticeSessionResult {
   const sessionIdRef = useRef<Promise<string> | null>(null)
-  // Po kroku, nie lista: powtórzenie kreski nadpisuje swój wynik, zamiast dopisywać
-  // kolejny i zawyżać średnią sesji.
   const scoresRef = useRef<Map<number, number>>(new Map())
   const [saveError, setSaveError] = useState<string | null>(null)
 
@@ -80,7 +67,6 @@ export function usePracticeSession(params: SessionParams | null): UsePracticeSes
   const discardAttempt = useCallback<UsePracticeSessionResult['discardAttempt']>(
     (stepIndex) => {
       scoresRef.current.delete(stepIndex)
-      // Sesja jeszcze nie istnieje = nie ma czego usuwać.
       sessionIdRef.current
         ?.then((sessionId) => progressService.deleteAttempts(sessionId, stepIndex))
         .catch(report)
@@ -131,7 +117,6 @@ export function usePracticeSession(params: SessionParams | null): UsePracticeSes
     [ensureSession, report, reset],
   )
 
-  /** Sesja już w bazie — zmieniamy nazwę tam; jeszcze nie — nowa nazwa pójdzie z parametrami przy starcie. */
   const rename = useCallback(async (title: string) => {
     const session = sessionIdRef.current
     return session ? progressService.renameProject(await session, title) : title.trim()

@@ -10,9 +10,6 @@ function distanceToSegment(point: Point, start: Point, end: Point): number {
   return Math.hypot(point.x - (start.x + t * dx), point.y - (start.y + t * dy))
 }
 
-// Ramer–Douglas–Peucker polyline simplification. Keeps only the points that deviate
-// from the simplified shape by more than `epsilon` px. Iterative (explicit stack) so
-// long strokes cannot overflow the call stack.
 export function simplifyRdp(points: Point[], epsilon: number): Point[] {
   if (points.length < 3 || epsilon <= 0) return points.slice()
 

@@ -3,7 +3,6 @@ import { Button, Spinner } from '../../../../components/ui'
 import { StrokeThumbnail } from '../../../progress/components/StrokeThumbnail'
 import type { Stroke } from '../../../../types/drawing'
 
-/** Ekran oczekiwania, gdy liczą się kontury i model układa kurs. */
 export function ImageAnalyzingScreen() {
   return (
     <section className="flex w-full flex-1 flex-col items-center justify-center gap-4 text-center">
@@ -16,7 +15,6 @@ export function ImageAnalyzingScreen() {
   )
 }
 
-/** Koniec kursu: zdjęcie obok rysunku i co dalej. */
 export function ImageDoneScreen({
   imageUrl,
   strokes,

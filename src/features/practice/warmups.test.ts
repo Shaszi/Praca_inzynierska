@@ -3,7 +3,6 @@ import { WARMUPS, isWarmupId } from './warmups'
 import { evaluateStroke } from './utils/strokeEvaluation'
 import type { Stroke } from '../../types/drawing'
 
-/** Idealne odrysowanie wzoru: te same punkty, tylko z czasem (ocena liczy z niego tempo). */
 const trace = (reference: Stroke): Stroke => ({
   ...reference,
   points: reference.points.map((point, index) => ({ ...point, timestamp: index * 12 })),
@@ -14,7 +13,6 @@ describe('rozgrzewki', () => {
     const ids = WARMUPS.map((warmup) => warmup.id)
     expect(new Set(ids).size).toBe(ids.length)
     for (const id of ids) expect(isWarmupId(id)).toBe(true)
-    // Wzorce z bazy mają uuid — nie mogą wpaść w gałąź „to rozgrzewka".
     expect(isWarmupId('3f1c9c6a-0000-4000-8000-000000000000')).toBe(false)
   })
 

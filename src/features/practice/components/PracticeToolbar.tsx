@@ -68,7 +68,6 @@ function MenuItem({
   )
 }
 
-/** Pasek nad kanwą, dokładnie jak `.toolbar` w sekcji „Ekran ćwiczeń na komputerze". */
 export function PracticeToolbar({
   tool,
   onToolChange,
@@ -95,22 +94,16 @@ export function PracticeToolbar({
   tool: Tool
   onToolChange: (tool: Tool) => void
   title: string
-  /** Podane — obok nazwy jest ołówek do zmiany nazwy projektu. */
   onRenameTitle?: (title: string) => Promise<void>
-  /** Numer kroku liczony od zera. */
   stepIndex: number
   stepsTotal: number
-  /** Warstwy są opcjonalne: tryb ze zdjęcia rysuje na jednej i przycisk by kłamał. */
   isLayersOpen?: boolean
   onToggleLayers?: () => void
   onOpenBrush: () => void
   isBrushOpen: boolean
-  /** Bieżący kolor pędzla — kropka przy „Kolor” pokazuje, czym się rysuje. */
   brushColor: string
-  /** Krok w tył wzorca — zdejmuje kreskę poprzedniego kroku do narysowania od nowa. */
   onStepBack?: () => void
   canStepBack?: boolean
-  /** Czym jest jeden krok: kreską wzorca albo krokiem planu ze zdjęcia. */
   stepNoun?: string
   onUndo: () => void
   onRedo: () => void
@@ -136,7 +129,6 @@ export function PracticeToolbar({
     action()
   }
 
-  // Menu zamyka klik poza nim i Esc — jak każde rozwijane menu.
   useEffect(() => {
     if (!isMoreOpen) return
     const onPointerDown = (event: PointerEvent) => {
@@ -144,7 +136,6 @@ export function PracticeToolbar({
       if (!moreRef.current?.contains(target) && !menuRef.current?.contains(target)) setMenuAt(null)
     }
     const onKeyDown = (event: KeyboardEvent) => event.key === 'Escape' && setMenuAt(null)
-    // Menu stoi w miejscu ekranu, więc po przewinięciu odjechałoby od przycisku — zamykamy.
     const close = () => setMenuAt(null)
     document.addEventListener('pointerdown', onPointerDown)
     document.addEventListener('keydown', onKeyDown)
@@ -207,7 +198,6 @@ export function PracticeToolbar({
         Kolor
       </Button>
 
-      {/* Rzadziej używane akcje w jednym menu — w pasku było ich za dużo, zwłaszcza na tablecie. */}
       <div ref={moreRef} className="relative">
         <Button variant="ghost" size="sm" onClick={() => setIsMoreOpen(!isMoreOpen)} aria-expanded={isMoreOpen} aria-haspopup="menu">
           Więcej

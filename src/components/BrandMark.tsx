@@ -4,7 +4,6 @@ export function BrandMark({ className = '' }: { className?: string }) {
       <svg width="34" height="34" viewBox="0 0 34 34" className="shrink-0" aria-hidden>
         <rect width="34" height="34" rx="11" fill="var(--color-surface-dim)" />
         <defs>
-          {/* Gradient markera. Reguła z projektu: tylko kreska, logo i pasek postępu. */}
           <linearGradient id="brand-marker" x1="0" x2="1" y1="0" y2="0">
             <stop offset="0" stopColor="#ff5fa8" />
             <stop offset="0.55" stopColor="#ff9a3d" />

@@ -4,7 +4,6 @@ import { createStabilizer, refineStroke, resampleCatmullRom, simplifyRdp } from 
 
 const FRAME_MS = 1000 / 120
 
-// Deterministic pseudo-random noise so tests are reproducible
 function noise(seed: number): number {
   const x = Math.sin(seed * 12.9898) * 43758.5453
   return (x - Math.floor(x)) * 2 - 1

@@ -2,7 +2,6 @@ import { CheckIcon } from '../../../components/icons'
 import { Eyebrow } from '../../../components/ui'
 import type { GoalSummary } from '../utils/goalProgress'
 
-// Do tej liczby dni pasek jest dzielony na osobne segmenty — każdy dzień to jedna "kratka".
 const MAX_SEGMENTS = 60
 
 function dayWord(count: number): string {
@@ -75,7 +74,6 @@ export function GoalProgress({ goal, onEdit }: { goal: GoalSummary; onEdit?: () 
         ) : (
           <div className="h-2.5 overflow-hidden rounded-full border border-line bg-paper-dim">
             <div
-              // Gradient markera — jedno z trzech miejsc, gdzie projekt go dopuszcza.
               className="h-full rounded-full bg-[linear-gradient(90deg,#ff5fa8_0%,#ff9a3d_55%,#ffd84a_100%)] transition-[width] duration-700"
               style={{ width: `${percent}%` }}
             />

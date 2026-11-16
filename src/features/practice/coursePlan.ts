@@ -1,32 +1,14 @@
 import { pathLength, type ContourPoint } from './contours'
 import type { SubjectMask } from './subjectMask'
 
-/**
- * Układanie kursu z konturów — po stronie programu, nie modelu.
- *
- * Model ustalał wcześniej i kolejność, i to, które linie zostają. Wychodziło losowo:
- * krok po obrysie, potem kreska ze środka, potem znów obrys, a cieniowanie trafiało do kursu
- * na równi z sylwetką. Tu decyduje geometria, tak jak uczy się rysunku:
- *   1. obrys — linie na granicy zaznaczonego obiektu, od góry,
- *   2. konstrukcja — długie linie wewnątrz,
- *   3. detal — krótsze linie wewnątrz; najkrótsze (faktura, cienie) wypadają.
- * W każdej grupie kolejna linia zaczyna się tam, gdzie skończyła poprzednia — ręka nie skacze.
- * Modelowi zostaje nazwanie kroków.
- */
-
 export type ContourRole = 'outline' | 'structure' | 'detail'
 export type PlannedContour = { points: ContourPoint[]; role: ContourRole }
 
-/** Linia wewnątrz krótsza niż to (ułamek przekątnej) to faktura albo cień, nie kształt. */
 const MIN_DETAIL = 0.025
-/** Od tej długości (ułamek przekątnej) linia wewnątrz niesie bryłę. */
 const STRUCTURE = 0.07
-/** Tyle punktów konturu musi leżeć na granicy maski, żeby uznać go za obrys. */
 const OUTLINE_SHARE = 0.6
-/** Górny limit kroków — kurs z setką kresek nikogo niczego nie nauczy. */
 const MAX_STEPS = 45
 
-/** Siatka w rozdzielczości maski: 1 = w odległości `radius` od granicy obiektu. */
 export function nearBoundary(mask: SubjectMask, radius: number): Uint8Array {
   const { data, width, height } = mask
   const out = new Uint8Array(width * height)
@@ -52,7 +34,6 @@ export function nearBoundary(mask: SubjectMask, radius: number): Uint8Array {
   return out
 }
 
-/** Rola każdego konturu; bez maski nie ma czego nazwać obrysem, więc liczy się sama długość. */
 export function classifyContours(
   contours: ContourPoint[][],
   width: number,
@@ -60,7 +41,6 @@ export function classifyContours(
   mask: SubjectMask | null,
 ): ContourRole[] {
   const diagonal = Math.hypot(width, height)
-  // Granica w pikselach maski: ~1% przekątnej, bo obrys konturów leży o włos od krawędzi maski.
   const boundary = mask ? nearBoundary(mask, (Math.hypot(mask.width, mask.height) * 0.01)) : null
   return contours.map((points) => {
     if (boundary && mask) {
@@ -82,10 +62,6 @@ const isClosed = (points: ContourPoint[]) =>
 
 const distance = (a: ContourPoint, b: ContourPoint) => Math.hypot(a.x - b.x, a.y - b.y)
 
-/**
- * Kontur ustawiony tak, żeby zaczynał się najbliżej pióra: otwarty — odwrócony, jeśli bliżej
- * jest drugi koniec; zamknięty — obrócony, żeby startował z najbliższego punktu.
- */
 function startNear(points: ContourPoint[], pen: ContourPoint): { points: ContourPoint[]; gap: number } {
   if (isClosed(points)) {
     let best = 0
@@ -102,7 +78,6 @@ function startNear(points: ContourPoint[], pen: ContourPoint): { points: Contour
   return head <= tail ? { points, gap: head } : { points: [...points].reverse(), gap: tail }
 }
 
-/** Kolejność w jednej grupie: zawsze najbliższa linia od miejsca, gdzie skończyła się poprzednia. */
 function chain(contours: ContourPoint[][], pen: ContourPoint): { ordered: ContourPoint[][]; pen: ContourPoint } {
   const left = [...contours]
   const ordered: ContourPoint[][] = []
@@ -123,7 +98,6 @@ function chain(contours: ContourPoint[][], pen: ContourPoint): { ordered: Contou
   return { ordered, pen }
 }
 
-/** Pełny plan: role, odsianie faktury, kolejność obrys → konstrukcja → detal. */
 export function planCourse(
   contours: ContourPoint[][],
   width: number,
@@ -139,10 +113,8 @@ export function planCourse(
 
   const outline = byRole('outline')
   const structure = byRole('structure')
-  // Detal ma tyle miejsca, ile zostało po kształcie; najdłuższe detale mają pierwszeństwo.
   const detail = byRole('detail').slice(0, Math.max(0, MAX_STEPS - outline.length - structure.length))
 
-  // Rysunek zaczyna się od góry obiektu — tak prowadzi się szkic postaci i przedmiotu.
   const all = [...outline, ...structure, ...detail]
   if (all.length === 0) return []
   let pen = all.flat().reduce((top, p) => (p.y < top.y ? p : top))

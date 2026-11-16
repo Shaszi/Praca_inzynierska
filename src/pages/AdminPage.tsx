@@ -65,8 +65,6 @@ export function AdminPage() {
 
   const moderators = users.filter((entry) => entry.roles.length > 0).length
 
-  // Filtrowanie po stronie klienta: lista profili jest już w pamięci, więc zapytanie
-  // do bazy na każdą literę byłoby pracą bez zysku.
   const visible = useMemo(
     () => users.filter((entry) => matchesRole(entry, roleFilter) && matchesQuery(entry, query)),
     [query, roleFilter, users],

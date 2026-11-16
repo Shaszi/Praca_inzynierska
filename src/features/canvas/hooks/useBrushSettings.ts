@@ -2,13 +2,10 @@ import { useCallback, useState } from 'react'
 
 export type BrushSettings = {
   color: string
-  /** Grubość w pikselach rysunku. */
   width: number
-  /** 0–1 */
   opacity: number
 }
 
-/** Osiem barw z palety plus własna z pipety — razem dziewięć próbek, jak w projekcie. */
 export const BRUSH_SWATCHES = [
   { color: '#3ee6a8', name: 'Mięta' },
   { color: '#ffd84a', name: 'Cytryna' },

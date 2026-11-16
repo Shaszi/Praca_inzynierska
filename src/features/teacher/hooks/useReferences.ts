@@ -22,7 +22,6 @@ type UseReferencesResult = {
 }
 
 export function useReferences(): UseReferencesResult {
-  // Keeping reference state/actions in a hook lets UI stay presentation-only and reusable.
   const [references, setReferences] = useState<ReferenceDrawing[]>([])
   const [selectedReferenceId, setSelectedReferenceId] = useState('')
   const [statusMessage, setStatusMessage] = useState('Narysuj kreski i zapisz je jako wzorzec do ćwiczeń.')

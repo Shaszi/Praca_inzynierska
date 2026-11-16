@@ -199,7 +199,7 @@ export function ImagePracticePage() {
 
   const handleStrokeComplete = useCallback(async (stroke: Stroke, rawPoints: Point[]) => {
     // Stuknięcie bez ruchu nie jest kreską — nie trafia na płótno ani do oceny.
-    if (stroke.points.length < 2 || pathLength(stroke.points) < 6) return
+    if (stroke.points.length < 2 || pathLength(stroke.points) < 3) return
     const tagged = { ...stroke, stepIndex }
     addStroke(tagged)
     if (!currentStep) return

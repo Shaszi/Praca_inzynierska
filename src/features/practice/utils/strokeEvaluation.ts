@@ -306,12 +306,13 @@ const TOO_SHORT: StrokeEvaluation = {
   summary: 'Za mało, żeby ocenić — dorysuj dalszą część linii.',
 }
 
+// Stałe 15 px blokowało krótkie detale (powieka, nozdrze) — dla nich wystarczy połowa linii.
 export function evaluateStroke(user: Stroke, reference: Stroke, rawPoints?: Point[]): StrokeEvaluation {
   const raw = rawPoints && rawPoints.length >= 2 ? rawPoints : user.points
   const refLength = pathLength(reference.points)
   const userLength = pathLength(user.points)
 
-  if (user.points.length < 2 || reference.points.length < 2 || userLength < Math.max(15, 0.1 * refLength)) {
+  if (user.points.length < 2 || reference.points.length < 2 || userLength < Math.max(Math.min(15, 0.5 * refLength), 0.1 * refLength)) {
     return TOO_SHORT
   }
 

@@ -103,6 +103,12 @@ describe('evaluateStroke', () => {
     expect(result.score).toBe(0)
   })
 
+  it('przyjmuje odrysowanie krótkiego detalu, krótszego niż 15 px', () => {
+    const detail: Stroke = { brushSize: 3, points: [0, 1, 2, 3, 4].map((i) => ({ x: 100 + i * 2, y: 300, timestamp: i })) }
+    const line = [0, 1, 2, 3, 4, 5].map((i) => ({ x: 100 + i * 1.6, y: 300, timestamp: 1000 + i * 20 }))
+    expect(evaluateStroke(asStroke(line), detail, line).tooShort).toBe(false)
+  })
+
   it('zgłasza zbyt wolne rysowanie', () => {
     const raw = drawn(() => 300, { speed: 35 })
     const result = evaluateStroke(asStroke(raw), reference, raw)

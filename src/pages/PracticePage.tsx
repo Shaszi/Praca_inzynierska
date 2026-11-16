@@ -421,12 +421,18 @@ export function PracticePage() {
               onRedoGesture={settings.tapGestures ? handleRedo : undefined}
               controlsRef={canvasControls}
             />
-            {awaitingNext && (
-              <NextStepButton
-                isLast={currentGuideStrokeIndex >= totalStrokes - 1}
-                label="Następna kreska"
-                onClick={handleNextStroke}
-              />
+            {isCompleted ? (
+              <div className="absolute inset-x-3 bottom-3 z-10">
+                <CompletedBanner onRestart={handleClear} />
+              </div>
+            ) : (
+              awaitingNext && (
+                <NextStepButton
+                  isLast={currentGuideStrokeIndex >= totalStrokes - 1}
+                  label="Następna kreska"
+                  onClick={handleNextStroke}
+                />
+              )
             )}
             {!selectedReference ? (
               <p className="pointer-events-none absolute inset-x-0 top-1/2 -translate-y-1/2 text-center text-ink-faint">
@@ -442,7 +448,7 @@ export function PracticePage() {
             evaluation={evaluation}
             live={live}
             isAnalysing={isAnalysing}
-            canProceed={awaitingNext}
+            canProceed={awaitingNext && !isCompleted}
             canRetry={stepStrokes.length > 0}
             isLastStroke={currentGuideStrokeIndex >= totalStrokes - 1}
             onNextStroke={handleNextStroke}
@@ -454,8 +460,6 @@ export function PracticePage() {
           </>
         }
       />
-
-      {isCompleted && <CompletedBanner onRestart={handleClear} />}
 
       {isPickerOpen && (
         <ReferencePickerModal

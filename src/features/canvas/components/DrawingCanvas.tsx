@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from 'react'
-import type { PointerEvent as ReactPointerEvent } from 'react'
-import { useCanvas } from '../hooks/useCanvas'
+import type { MutableRefObject, PointerEvent as ReactPointerEvent } from 'react'
+import { useCanvas, type CanvasControls } from '../hooks/useCanvas'
 import type { GuideType, Layer, Point, SmoothingSettings, Stroke, Tool } from '../../../types/drawing'
 import { IDENTITY_VIEW, type Bounds, type CanvasView } from '../utils/canvasPoint'
 import { useCanvasColors } from '../utils/themeColors'
@@ -28,6 +28,13 @@ type DrawingCanvasProps = {
   backgroundImageUrl?: string
   onViewChange?: (view: CanvasView) => void
   fitBounds?: Bounds | null
+  followGuide?: boolean
+  guideOpacity?: number
+  penOnly?: boolean
+  allowRotation?: boolean
+  onUndoGesture?: () => void
+  onRedoGesture?: () => void
+  controlsRef?: MutableRefObject<CanvasControls | null>
   backgroundImageSize?: { width: number; height: number } | null
 }
 
@@ -51,6 +58,13 @@ export function DrawingCanvas({
   backgroundImageUrl,
   onViewChange,
   fitBounds = null,
+  followGuide = true,
+  guideOpacity = 1,
+  penOnly = false,
+  allowRotation = true,
+  onUndoGesture,
+  onRedoGesture,
+  controlsRef,
   backgroundImageSize = null,
 }: DrawingCanvasProps) {
   const cursorRef = useRef<HTMLDivElement>(null)
@@ -82,6 +96,13 @@ export function DrawingCanvas({
     referenceStrokeColor: referenceStrokeColor ?? colors.lineStrong,
     onViewChange: handleViewChange,
     fitBounds,
+    followGuide,
+    guideOpacity,
+    penOnly,
+    allowRotation,
+    onUndoGesture,
+    onRedoGesture,
+    controlsRef,
   })
 
   const updateCursorPreview = useCallback(
@@ -122,14 +143,14 @@ export function DrawingCanvas({
   return (
     <div
       ref={containerRef}
-      className="relative h-full w-full overflow-hidden rounded-[22px] border border-line bg-paper-dim"
+      className="relative h-full w-full overflow-hidden rounded-[22px] border border-line bg-paper-dim select-none [-webkit-touch-callout:none]"
       style={{ backgroundImage: 'var(--canvas-dots)', backgroundSize: '22px 22px' }}
     >
       {backgroundImageUrl && (
         <div
           className="pointer-events-none absolute inset-0"
           style={{
-            transform: `translate(${view.offsetX}px, ${view.offsetY}px) scale(${view.scale})`,
+            transform: `translate(${view.offsetX}px, ${view.offsetY}px) rotate(${view.rotation ?? 0}rad) scale(${view.scale})`,
             transformOrigin: '0 0',
           }}
         >

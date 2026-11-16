@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createPointFromPointerEvent, fitView, IDENTITY_VIEW, lerpView, revealView, strokesBounds, type CanvasView } from './canvasPoint'
+import { angleDelta, centerView, createPointFromPointerEvent, fitView, IDENTITY_VIEW, lerpView, strokesBounds, toDrawing, toScreen as projectToScreen, type CanvasView } from './canvasPoint'
 
 const bounds = { left: 30, top: 50 } as DOMRect
 const sample = (clientX: number, clientY: number) => ({ clientX, clientY, timeStamp: 0 })
@@ -129,27 +129,29 @@ describe('fitView', () => {
   })
 })
 
-describe('revealView', () => {
-  const onScreen = (x: number, view: CanvasView) => x * view.scale + view.offsetX
+describe('centerView', () => {
   const box = (minX: number, minY: number, maxX: number, maxY: number) => ({ minX, minY, maxX, maxY })
-
-  it('nic nie zmienia, gdy linia już jest na ekranie', () => {
-    expect(revealView(IDENTITY_VIEW, box(100, 100, 200, 200), 800, 600, 20, LIMITS)).toBeNull()
+  const centerOf = (b: ReturnType<typeof box>, view: CanvasView) => ({
+    x: ((b.minX + b.maxX) / 2) * view.scale + view.offsetX,
+    y: ((b.minY + b.maxY) / 2) * view.scale + view.offsetY,
   })
 
-  it('linia wystająca za prawą krawędź — tylko przesunięcie, bez zmiany skali', () => {
-    const view = revealView(IDENTITY_VIEW, box(700, 100, 900, 200), 800, 600, 20, LIMITS)!
+  it('linia przy krawędzi trafia na środek ekranu, bez zmiany skali', () => {
+    const line = box(650, 80, 750, 120)
+    const view = centerView(IDENTITY_VIEW, line, 800, 600, 20, LIMITS)!
     expect(view.scale).toBe(1)
-    expect(onScreen(900, view)).toBeCloseTo(780)
-    expect(view.offsetY).toBe(0)
+    expect(centerOf(line, view).x).toBeCloseTo(400)
+    expect(centerOf(line, view).y).toBeCloseTo(300)
   })
 
-  it('linia większa niż ekran w obecnej skali — oddala i centruje', () => {
+  it('linia już na środku — kadr stoi', () => {
+    expect(centerView(IDENTITY_VIEW, box(380, 280, 420, 320), 800, 600, 20, LIMITS)).toBeNull()
+  })
+
+  it('linia większa niż ekran — oddala, ale nigdy nie przybliża', () => {
     const zoomed = { scale: 4, offsetX: 0, offsetY: 0 }
-    const view = revealView(zoomed, box(0, 0, 400, 100), 800, 600, 20, LIMITS)!
-    expect(view.scale).toBeLessThan(4)
-    expect(onScreen(0, view)).toBeGreaterThanOrEqual(19.5)
-    expect(onScreen(400, view)).toBeLessThanOrEqual(780.5)
+    expect(centerView(zoomed, box(0, 0, 400, 100), 800, 600, 20, LIMITS)!.scale).toBeLessThan(4)
+    expect(centerView(IDENTITY_VIEW, box(700, 500, 710, 510), 800, 600, 20, LIMITS)!.scale).toBe(1)
   })
 })
 
@@ -169,5 +171,46 @@ describe('lerpView', () => {
 
   it('w połowie skala jest średnią geometryczną', () => {
     expect(lerpView(from, to, 0.5, 800, 600).scale).toBeCloseTo(2)
+  })
+})
+
+describe('obrót płótna', () => {
+  const rotated: CanvasView = { scale: 2, offsetX: 300, offsetY: 120, rotation: 1.1 }
+
+  it('ten sam punkt rysunku po drodze ekran → rysunek, także po obrocie', () => {
+    for (const p of [{ x: 0, y: 0 }, { x: 140, y: -60 }, { x: 512, y: 300 }]) {
+      const back = toDrawing(projectToScreen(p, rotated), rotated)
+      expect(back.x).toBeCloseTo(p.x, 6)
+      expect(back.y).toBeCloseTo(p.y, 6)
+    }
+  })
+
+  it('dotyk na obróconym płótnie zapisuje punkt rysunku pod palcem', () => {
+    const screen = projectToScreen({ x: 80, y: 40 }, rotated)
+    const point = createPointFromPointerEvent(sample(screen.x + bounds.left, screen.y + bounds.top), bounds, rotated)
+    expect(point.x).toBeCloseTo(80, 6)
+    expect(point.y).toBeCloseTo(40, 6)
+  })
+
+  it('obrót o 90° kładzie oś X rysunku pionowo na ekranie', () => {
+    const quarter = { scale: 1, offsetX: 0, offsetY: 0, rotation: Math.PI / 2 }
+    const p = projectToScreen({ x: 10, y: 0 }, quarter)
+    expect(p.x).toBeCloseTo(0, 6)
+    expect(p.y).toBeCloseTo(10, 6)
+  })
+
+  it('animacja obrotu idzie krótszą drogą przez 0°', () => {
+    expect(angleDelta(Math.PI * 1.9, Math.PI * 0.1)).toBeCloseTo(Math.PI * 0.2, 6)
+    const half = lerpView({ ...IDENTITY_VIEW, rotation: -0.2 }, { ...IDENTITY_VIEW, rotation: 0.2 }, 0.5, 800, 600)
+    expect(half.rotation).toBeCloseTo(0, 6)
+  })
+
+  it('centrowanie na obróconym płótnie kładzie linię na środku i nie zmienia obrotu', () => {
+    const line = { minX: 600, minY: 40, maxX: 700, maxY: 80 }
+    const view = centerView({ scale: 1, offsetX: 0, offsetY: 0, rotation: 0.7 }, line, 800, 600, 20, LIMITS)!
+    const middle = projectToScreen({ x: 650, y: 60 }, view)
+    expect(middle.x).toBeCloseTo(400, 4)
+    expect(middle.y).toBeCloseTo(300, 4)
+    expect(view.rotation).toBe(0.7)
   })
 })

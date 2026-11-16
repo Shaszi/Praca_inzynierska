@@ -86,6 +86,8 @@ export function PracticeToolbar({
   onUndo,
   onRedo,
   onClear,
+  onRotate,
+  onResetRotation,
   canUndo,
   canRedo,
   isFullscreen,
@@ -108,6 +110,8 @@ export function PracticeToolbar({
   onUndo: () => void
   onRedo: () => void
   onClear: () => void
+  onRotate?: (degrees: number) => void
+  onResetRotation?: () => void
   canUndo: boolean
   canRedo: boolean
   isFullscreen: boolean
@@ -222,6 +226,13 @@ export function PracticeToolbar({
             <MenuItem onClick={pick(onToggleFullscreen)} pressed={isFullscreen}>
               <ExpandIcon collapsed={isFullscreen} /> {isFullscreen ? 'Wyjdź z pełnego ekranu' : 'Pełny ekran'}
             </MenuItem>
+            {onRotate && (
+              <>
+                <MenuItem onClick={pick(() => onRotate(-15))}>↺ Obróć w lewo</MenuItem>
+                <MenuItem onClick={pick(() => onRotate(15))}>↻ Obróć w prawo</MenuItem>
+              </>
+            )}
+            {onResetRotation && <MenuItem onClick={pick(onResetRotation)}>Wyprostuj płótno</MenuItem>}
             <MenuItem onClick={pick(onClear)} danger>
               Wyczyść płótno
             </MenuItem>

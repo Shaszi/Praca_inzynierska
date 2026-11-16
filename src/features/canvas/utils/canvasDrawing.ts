@@ -27,6 +27,7 @@ type RenderSceneOptions = {
   userStrokeColor: string
   view?: CanvasView
   guideDashOffset?: number
+  guideOpacity?: number
 }
 
 type ReplayLayerOptions = {
@@ -39,7 +40,8 @@ type ReplayLayerOptions = {
 
 function applyView(context: CanvasRenderingContext2D, dpr: number, view: CanvasView): void {
   const k = dpr * view.scale
-  context.setTransform(k, 0, 0, k, dpr * view.offsetX, dpr * view.offsetY)
+  const r = view.rotation ?? 0
+  context.setTransform(k * Math.cos(r), k * Math.sin(r), -k * Math.sin(r), k * Math.cos(r), dpr * view.offsetX, dpr * view.offsetY)
 }
 
 /** Czyszczenie musi iść w pikselach urządzenia — po przesunięciu widoku
@@ -122,33 +124,35 @@ export function drawStroke(
 export function drawGuideStroke(
   context: CanvasRenderingContext2D,
   stroke: Stroke,
-  options: { color: string; dpr: number; view?: CanvasView; dashOffset?: number },
+  options: { color: string; dpr: number; view?: CanvasView; dashOffset?: number; opacity?: number },
 ): void {
   if (stroke.points.length === 0) return
 
-  const { color, dpr, view = IDENTITY_VIEW, dashOffset = 0 } = options
+  const { color, dpr, view = IDENTITY_VIEW, dashOffset = 0, opacity = 1 } = options
+  const band = Math.max(4, stroke.brushSize * 2.6)
+  const dash = Math.max(4, stroke.brushSize * 1.8)
 
   drawStroke(context, stroke, {
     color,
     dpr,
     view,
-    alpha: 0.4,
-    lineWidthOverride: 16,
+    alpha: 0.4 * opacity,
+    lineWidthOverride: band,
   })
 
   drawStroke(context, stroke, {
     color,
     dpr,
     view,
-    alpha: 0.9,
-    dashPattern: [11, 9],
+    alpha: 0.9 * opacity,
+    dashPattern: [dash, dash * 0.8],
     dashOffset: -dashOffset,
   })
 
   const start = stroke.points[0]
-  configureContext(context, dpr, view, GUIDE_START, 1, 1)
+  configureContext(context, dpr, view, GUIDE_START, 1, opacity)
   context.beginPath()
-  context.arc(start.x, start.y, 7, 0, Math.PI * 2)
+  context.arc(start.x, start.y, Math.max(3, stroke.brushSize * 1.15), 0, Math.PI * 2)
   context.fill()
   context.globalAlpha = 1
 }
@@ -239,6 +243,7 @@ export function renderCanvasScene({
   userStrokeColor,
   view = IDENTITY_VIEW,
   guideDashOffset = 0,
+  guideOpacity = 1,
 }: RenderSceneOptions): void {
   clearAll(context, width, height, dpr)
 
@@ -248,6 +253,7 @@ export function renderCanvasScene({
       dpr,
       view,
       dashOffset: guideDashOffset,
+      opacity: guideOpacity,
     })
   }
 

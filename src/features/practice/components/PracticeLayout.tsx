@@ -36,8 +36,8 @@ export function PracticeLayout({
     <div
       className={
         isFullscreen
-          ? 'fixed inset-0 z-[60] flex gap-[18px] bg-paper-dim p-4'
-          : 'grid min-h-0 flex-1 gap-[18px] lg:grid-cols-[minmax(0,1fr)_340px]'
+          ? 'fixed inset-0 z-[60] flex gap-[18px] bg-paper-dim p-4 select-none [-webkit-touch-callout:none]'
+          : 'grid min-h-0 flex-1 gap-[18px] select-none [-webkit-touch-callout:none] lg:grid-cols-[minmax(0,1fr)_340px]'
       }
     >
       <div className="relative flex min-h-0 min-w-0 flex-1 flex-col gap-3.5">

@@ -1,15 +1,20 @@
 import { useCallback, useEffect, useRef } from "react";
-import type { PointerEvent as ReactPointerEvent } from "react";
+import type { MutableRefObject, PointerEvent as ReactPointerEvent } from "react";
 import type { Layer, Point, SmoothingSettings, Stroke, Tool } from "../../../types/drawing";
 import { createStabilizer, DEFAULT_SMOOTHING, POINT_SPACING_PX, refineStroke, type Stabilizer } from "../smoothing";
 import { renderCanvasScene, replayLayer } from "../utils/canvasDrawing";
+
+export type CanvasControls = { rotateBy: (degrees: number) => void; resetRotation: () => void };
 import {
   createPointFromPointerEvent,
   fitView,
   getPointsFromPointerEvent,
   IDENTITY_VIEW,
+  angleDelta,
+  centerView,
   lerpView,
-  revealView,
+  toDrawing,
+  viewAnchored,
   strokesBounds,
   type Bounds,
   type CanvasView,
@@ -32,6 +37,20 @@ type UseCanvasOptions = {
   onActiveStrokeChange?: (stroke: Stroke | null) => void;
   onViewChange?: (view: CanvasView) => void;
   fitBounds?: Bounds | null;
+  /** Przy nowym kroku kadr płynnie centruje się na jego linii. */
+  followGuide?: boolean;
+  /** Krycie linii pomocniczych, 0–1. */
+  guideOpacity?: number;
+  /** Rysuje tylko rysik; palec przesuwa płótno. */
+  penOnly?: boolean;
+  /** Czy dwa palce mogą obracać płótno. */
+  allowRotation?: boolean;
+  /** Stuknięcie dwoma palcami (jak w Procreate). */
+  onUndoGesture?: () => void;
+  /** Stuknięcie trzema palcami. */
+  onRedoGesture?: () => void;
+  /** Sterowanie widokiem z zewnątrz, np. przyciski obrotu w pasku narzędzi. */
+  controlsRef?: MutableRefObject<CanvasControls | null>;
 };
 
 type UseCanvasResult = {
@@ -53,6 +72,9 @@ function sameBounds(a: Bounds | null, b: Bounds | null): boolean {
 const MIN_SCALE = 0.5;
 const MAX_SCALE = 6;
 const REVEAL_MS = 450;
+const TAP_MAX_MS = 300;
+const TAP_SLOP_PX = 14;
+const ROTATION_SNAP = (4 * Math.PI) / 180;
 const FIT_PADDING = 28;
 const REFIT_SIZE_CHANGE = 0.25;
 const GUIDE_DASH_SPEED = 26;
@@ -119,6 +141,13 @@ export function useCanvas({
   onActiveStrokeChange,
   onViewChange,
   fitBounds = null,
+  followGuide = true,
+  guideOpacity = 1,
+  penOnly = false,
+  allowRotation = true,
+  onUndoGesture,
+  onRedoGesture,
+  controlsRef,
 }: UseCanvasOptions): UseCanvasResult {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -147,7 +176,15 @@ export function useCanvas({
   }, []);
   const panRef = useRef<{ pointerId: number; startX: number; startY: number; origin: CanvasView } | null>(null);
   const touchesRef = useRef<Map<number, { x: number; y: number }>>(new Map());
-  const gestureRef = useRef<{ distance: number; midX: number; midY: number; origin: CanvasView } | null>(null);
+  const gestureRef = useRef<{ distance: number; angle: number; midX: number; midY: number; origin: CanvasView } | null>(null);
+  // Stuknięcie kilkoma palcami: krótko, bez ruchu, a widok wraca do stanu sprzed dotyku.
+  const tapRef = useRef<{ start: number; fingers: number; moved: boolean; origins: Map<number, { x: number; y: number }>; view: CanvasView } | null>(null);
+  const undoGestureRef = useRef(onUndoGesture);
+  const redoGestureRef = useRef(onRedoGesture);
+  useEffect(() => {
+    undoGestureRef.current = onUndoGesture;
+    redoGestureRef.current = onRedoGesture;
+  }, [onUndoGesture, onRedoGesture]);
   const guidePhaseRef = useRef(0);
   const guideRafRef = useRef<number | null>(null);
 
@@ -162,6 +199,7 @@ export function useCanvas({
   useEffect(() => { referenceStrokesRef.current = referenceStrokes; }, [referenceStrokes]);
   useEffect(() => { userStrokeColorRef.current = userStrokeColor; layersDirtyRef.current = true; }, [userStrokeColor]);
   useEffect(() => { referenceStrokeColorRef.current = referenceStrokeColor; }, [referenceStrokeColor]);
+  const guideOpacityRef = useRef(guideOpacity);
   useEffect(() => { toolRef.current = tool; }, [tool]);
   useEffect(() => { smoothingRef.current = smoothing; }, [smoothing]);
 
@@ -240,6 +278,7 @@ export function useCanvas({
       userStrokeColor: userStrokeColorRef.current,
       view: viewRef.current,
       guideDashOffset: guidePhaseRef.current,
+      guideOpacity: guideOpacityRef.current,
     });
   }, [getLayers, rebuildLayers]);
 
@@ -250,6 +289,11 @@ export function useCanvas({
       redrawScene();
     });
   }, [redrawScene]);
+
+  useEffect(() => {
+    guideOpacityRef.current = guideOpacity;
+    scheduleRedraw();
+  }, [guideOpacity, scheduleRedraw]);
 
   const baseView = useCallback((): CanvasView => {
     const metrics = metricsRef.current;
@@ -267,17 +311,12 @@ export function useCanvas({
       if (nextScale === current.scale) return;
 
       const base = baseView();
-      if (Math.abs(nextScale - base.scale) < 0.06 * base.scale) {
+      const upright = Math.abs(current.rotation ?? 0) < 1e-3;
+      if (upright && Math.abs(nextScale - base.scale) < 0.06 * base.scale) {
         viewRef.current = base;
       } else {
-        const drawingX = (screenX - current.offsetX) / current.scale;
-        const drawingY = (screenY - current.offsetY) / current.scale;
-
-        viewRef.current = {
-          scale: nextScale,
-          offsetX: screenX - drawingX * nextScale,
-          offsetY: screenY - drawingY * nextScale,
-        };
+        const screen = { x: screenX, y: screenY };
+        viewRef.current = viewAnchored(toDrawing(screen, current), screen, nextScale, current.rotation ?? 0);
       }
 
       userAdjustedViewRef.current = viewRef.current !== base;
@@ -350,7 +389,12 @@ export function useCanvas({
   const readPinch = useCallback(() => {
     const [a, b] = [...touchesRef.current.values()];
     if (!a || !b) return null;
-    return { midX: (a.x + b.x) / 2, midY: (a.y + b.y) / 2, distance: Math.max(1, Math.hypot(b.x - a.x, b.y - a.y)) };
+    return {
+      midX: (a.x + b.x) / 2,
+      midY: (a.y + b.y) / 2,
+      distance: Math.max(1, Math.hypot(b.x - a.x, b.y - a.y)),
+      angle: Math.atan2(b.y - a.y, b.x - a.x),
+    };
   }, []);
 
   const cancelActiveStroke = useCallback(() => {
@@ -373,11 +417,22 @@ export function useCanvas({
 
       event.preventDefault();
       cancelReveal();
+      window.getSelection()?.removeAllRanges();
 
       if (event.pointerType === "touch") {
         const bounds = canvas.getBoundingClientRect();
-        touchesRef.current.set(event.pointerId, { x: event.clientX - bounds.left, y: event.clientY - bounds.top });
+        const at = { x: event.clientX - bounds.left, y: event.clientY - bounds.top };
+        if (touchesRef.current.size === 0) {
+          tapRef.current = { start: performance.now(), fingers: 0, moved: false, origins: new Map(), view: viewRef.current };
+        }
+        touchesRef.current.set(event.pointerId, at);
+        const tap = tapRef.current;
+        if (tap) {
+          tap.origins.set(event.pointerId, at);
+          tap.fingers = Math.max(tap.fingers, touchesRef.current.size);
+        }
         if (touchesRef.current.size >= 2) {
+          panRef.current = null;
           cancelActiveStroke();
           const pinch = readPinch();
           if (pinch) gestureRef.current = { ...pinch, origin: viewRef.current };
@@ -385,7 +440,7 @@ export function useCanvas({
         }
       }
 
-      if (event.button === 1 || event.button === 2) {
+      if (event.button === 1 || event.button === 2 || (penOnly && event.pointerType === "touch")) {
         canvas.setPointerCapture(event.pointerId);
         panRef.current = {
           pointerId: event.pointerId,
@@ -424,7 +479,7 @@ export function useCanvas({
       });
       scheduleRedraw();
     },
-    [brushOpacity, brushSize, cancelActiveStroke, cancelReveal, onActiveStrokeChange, onCurrentStrokePointCountChange, onEraseAtPoint, onEraseStart, readPinch, scheduleRedraw, tool],
+    [brushOpacity, brushSize, cancelActiveStroke, cancelReveal, onActiveStrokeChange, onCurrentStrokePointCountChange, onEraseAtPoint, onEraseStart, penOnly, readPinch, scheduleRedraw, tool],
   );
 
   const onPointerMove = useCallback(
@@ -433,20 +488,21 @@ export function useCanvas({
         const canvas = canvasRef.current;
         const bounds = canvas?.getBoundingClientRect();
         if (bounds) {
-          touchesRef.current.set(event.pointerId, { x: event.clientX - bounds.left, y: event.clientY - bounds.top });
+          const at = { x: event.clientX - bounds.left, y: event.clientY - bounds.top };
+          touchesRef.current.set(event.pointerId, at);
+          const origin = tapRef.current?.origins.get(event.pointerId);
+          if (tapRef.current && origin && Math.hypot(at.x - origin.x, at.y - origin.y) > TAP_SLOP_PX) tapRef.current.moved = true;
         }
         const gesture = gestureRef.current;
         const pinch = gesture && touchesRef.current.size >= 2 ? readPinch() : null;
         if (gesture && pinch) {
           const factor = pinch.distance / gesture.distance;
           const scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, gesture.origin.scale * factor));
-          const anchorX = (gesture.midX - gesture.origin.offsetX) / gesture.origin.scale;
-          const anchorY = (gesture.midY - gesture.origin.offsetY) / gesture.origin.scale;
-          viewRef.current = {
-            scale,
-            offsetX: pinch.midX - anchorX * scale,
-            offsetY: pinch.midY - anchorY * scale,
-          };
+          let rotation = (gesture.origin.rotation ?? 0) + (allowRotation ? angleDelta(gesture.angle, pinch.angle) : 0);
+          // Zatrzask na prosto: trafienie w dokładne 0° palcami jest prawie niemożliwe.
+          if (Math.abs(angleDelta(0, rotation)) < ROTATION_SNAP) rotation = 0;
+          const anchor = toDrawing({ x: gesture.midX, y: gesture.midY }, gesture.origin);
+          viewRef.current = viewAnchored(anchor, { x: pinch.midX, y: pinch.midY }, scale, rotation);
           userAdjustedViewRef.current = true;
           layersDirtyRef.current = true;
           onViewChange?.(viewRef.current);
@@ -458,7 +514,7 @@ export function useCanvas({
       const pan = panRef.current;
       if (pan && pan.pointerId === event.pointerId) {
         viewRef.current = {
-          scale: pan.origin.scale,
+          ...pan.origin,
           offsetX: pan.origin.offsetX + (event.clientX - pan.startX),
           offsetY: pan.origin.offsetY + (event.clientY - pan.startY),
         };
@@ -504,7 +560,7 @@ export function useCanvas({
       });
       scheduleRedraw();
     },
-    [onActiveStrokeChange, onCurrentStrokePointCountChange, onEraseAtPoint, onViewChange, readPinch, scheduleRedraw, tool],
+    [allowRotation, onActiveStrokeChange, onCurrentStrokePointCountChange, onEraseAtPoint, onViewChange, readPinch, scheduleRedraw, tool],
   );
 
   const onPointerUp = useCallback(
@@ -513,6 +569,20 @@ export function useCanvas({
 
       if (event.pointerType === "touch" && touchesRef.current.delete(event.pointerId)) {
         if (touchesRef.current.size < 2) gestureRef.current = null;
+        if (panRef.current?.pointerId === event.pointerId) panRef.current = null;
+        const tap = tapRef.current;
+        if (touchesRef.current.size === 0 && tap) {
+          tapRef.current = null;
+          const quick = performance.now() - tap.start < TAP_MAX_MS;
+          if (quick && !tap.moved && tap.fingers >= 2) {
+            viewRef.current = tap.view;
+            layersDirtyRef.current = true;
+            onViewChange?.(viewRef.current);
+            scheduleRedraw();
+            if (tap.fingers === 2) undoGestureRef.current?.();
+            else redoGestureRef.current?.();
+          }
+        }
         if (!isPointerActiveRef.current) return;
       }
 
@@ -551,7 +621,7 @@ export function useCanvas({
       onActiveStrokeChange?.(null);
       scheduleRedraw();
     },
-    [onActiveStrokeChange, onCurrentStrokePointCountChange, onEraseEnd, onStrokeComplete, scheduleRedraw, tool],
+    [onActiveStrokeChange, onCurrentStrokePointCountChange, onEraseEnd, onStrokeComplete, onViewChange, scheduleRedraw, tool],
   );
 
   useEffect(() => {
@@ -591,29 +661,55 @@ export function useCanvas({
   const revealKey = guideBounds
     ? `${guideBounds.minX},${guideBounds.minY},${guideBounds.maxX},${guideBounds.maxY}`
     : "";
+  const animateTo = useCallback(
+    (to: CanvasView) => {
+      const { width, height } = metricsRef.current;
+      const from = viewRef.current;
+      cancelReveal();
+      const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+      const start = performance.now();
+      const tick = (now: number) => {
+        const t = reduceMotion ? 1 : Math.min(1, (now - start) / REVEAL_MS);
+        const eased = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+        viewRef.current = lerpView(from, to, eased, width, height);
+        layersDirtyRef.current = true;
+        onViewChange?.(viewRef.current);
+        scheduleRedraw();
+        revealRafRef.current = t < 1 ? requestAnimationFrame(tick) : null;
+      };
+      revealRafRef.current = requestAnimationFrame(tick);
+    },
+    [cancelReveal, onViewChange, scheduleRedraw],
+  );
+
   useEffect(() => {
     const bounds = strokesBounds(referenceStrokesRef.current);
     const { width, height } = metricsRef.current;
-    if (!bounds || width === 0 || height === 0 || isPointerActiveRef.current) return;
-    const from = viewRef.current;
-    const to = revealView(from, bounds, width, height, FIT_PADDING, { min: MIN_SCALE, max: MAX_SCALE });
+    if (!followGuide || !bounds || width === 0 || height === 0 || isPointerActiveRef.current) return;
+    const to = centerView(viewRef.current, bounds, width, height, FIT_PADDING, { min: MIN_SCALE, max: MAX_SCALE });
     if (!to) return;
-
-    cancelReveal();
-    const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
-    const start = performance.now();
-    const tick = (now: number) => {
-      const t = reduceMotion ? 1 : Math.min(1, (now - start) / REVEAL_MS);
-      const eased = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
-      viewRef.current = lerpView(from, to, eased, width, height);
-      layersDirtyRef.current = true;
-      onViewChange?.(viewRef.current);
-      scheduleRedraw();
-      revealRafRef.current = t < 1 ? requestAnimationFrame(tick) : null;
-    };
-    revealRafRef.current = requestAnimationFrame(tick);
+    animateTo(to);
     return cancelReveal;
-  }, [revealKey, cancelReveal, onViewChange, scheduleRedraw]);
+  }, [revealKey, followGuide, animateTo, cancelReveal]);
+
+  useEffect(() => {
+    if (!controlsRef) return;
+    // Obrót wokół środka ekranu: punkt rysunku na środku zostaje na środku.
+    const rotateTo = (rotation: number) => {
+      const { width, height } = metricsRef.current;
+      const current = viewRef.current;
+      const middle = { x: width / 2, y: height / 2 };
+      userAdjustedViewRef.current = true;
+      animateTo(viewAnchored(toDrawing(middle, current), middle, current.scale, rotation));
+    };
+    controlsRef.current = {
+      rotateBy: (degrees) => rotateTo((viewRef.current.rotation ?? 0) + (degrees * Math.PI) / 180),
+      resetRotation: () => rotateTo(0),
+    };
+    return () => {
+      controlsRef.current = null;
+    };
+  }, [animateTo, controlsRef]);
 
   // Nowy wzorzec = nowy obrys do wpisania w kadr. Porównanie po wartościach, nie po
   // tożsamości: wywołujący, który liczy obrys w JSX, dawałby nowy obiekt co render,

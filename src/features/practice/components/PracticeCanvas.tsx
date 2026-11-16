@@ -1,7 +1,9 @@
+import type { MutableRefObject } from 'react'
+import type { CanvasControls } from '../../canvas/hooks/useCanvas'
 import { useState } from 'react'
 import type { Layer, Point, SmoothingSettings, Stroke, Tool } from '../../../types/drawing'
 import { DrawingCanvas } from '../../canvas/components/DrawingCanvas'
-import { IDENTITY_VIEW, type Bounds, type CanvasView } from '../../canvas/utils/canvasPoint'
+import { IDENTITY_VIEW, type Bounds, type CanvasView, toScreen } from '../../canvas/utils/canvasPoint'
 import { useCanvasColors } from '../../canvas/utils/themeColors'
 
 type PracticeCanvasProps = {
@@ -21,6 +23,13 @@ type PracticeCanvasProps = {
   onEraseEnd?: () => void
   errorMarker?: { x: number; y: number } | null
   fitBounds?: Bounds | null
+  followGuide?: boolean
+  guideOpacity?: number
+  penOnly?: boolean
+  allowRotation?: boolean
+  onUndoGesture?: () => void
+  onRedoGesture?: () => void
+  controlsRef?: MutableRefObject<CanvasControls | null>
 }
 
 export function PracticeCanvas({
@@ -40,6 +49,13 @@ export function PracticeCanvas({
   onEraseEnd,
   errorMarker = null,
   fitBounds = null,
+  followGuide = true,
+  guideOpacity = 1,
+  penOnly = false,
+  allowRotation = true,
+  onUndoGesture,
+  onRedoGesture,
+  controlsRef,
 }: PracticeCanvasProps) {
   const [view, setView] = useState<CanvasView>(IDENTITY_VIEW)
   const colors = useCanvasColors()
@@ -66,14 +82,21 @@ export function PracticeCanvas({
         referenceStrokeColor={colors.violet}
         onViewChange={setView}
         fitBounds={fitBounds}
+        followGuide={followGuide}
+        guideOpacity={guideOpacity}
+        penOnly={penOnly}
+        allowRotation={allowRotation}
+        onUndoGesture={onUndoGesture}
+        onRedoGesture={onRedoGesture}
+        controlsRef={controlsRef}
       />
       {errorMarker && (
         <span
           className="pointer-events-none absolute h-7 w-7 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-danger bg-danger/10"
           style={{
             // +1 px: ramka kontenera płótna.
-            left: errorMarker.x * view.scale + view.offsetX + 1,
-            top: errorMarker.y * view.scale + view.offsetY + 1,
+            left: toScreen(errorMarker, view).x + 1,
+            top: toScreen(errorMarker, view).y + 1,
           }}
           aria-hidden
         />

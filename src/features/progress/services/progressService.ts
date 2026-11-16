@@ -2,6 +2,7 @@ import { supabase } from '../../../lib/supabase'
 import type { Json, Tables } from '../../../lib/database.types'
 import type { Stroke } from '../../../types/drawing'
 import type { DailyActivity } from '../utils/goalProgress'
+import { photoService } from './photoService'
 
 export type Profile = {
   id: string
@@ -200,6 +201,14 @@ export const progressService = {
     const { error } = await supabase.from('practice_sessions').update({ title: clean }).eq('id', sessionId)
     if (error) fail('Nie udało się zmienić nazwy', error)
     return clean
+  },
+
+  async deleteProject(sessionId: string, photoPath: string | null): Promise<void> {
+    // Bez .select('id') PostgREST nie zgłasza błędu, gdy RLS nie dopuści wiersza.
+    const { data, error } = await supabase.from('practice_sessions').delete().eq('id', sessionId).select('id')
+    if (error) fail('Nie udało się usunąć projektu', error)
+    if (data.length === 0) throw new Error('Nie możesz usunąć tego projektu.')
+    if (photoPath) await photoService.remove(photoPath).catch((err) => console.error(err))
   },
 
   async getProject(sessionId: string): Promise<{

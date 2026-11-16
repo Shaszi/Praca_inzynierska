@@ -1,8 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { StrokeThumbnail } from '../../../progress/components/StrokeThumbnail'
 import { progressService, type ImageProject } from '../../../progress/services/progressService'
-import { EditableTitle } from '../EditableTitle'
+import { ImageProjectCard } from './ImageProjectCard'
 
 export function ImageProjectList() {
   const [projects, setProjects] = useState<ImageProject[]>([])
@@ -23,31 +21,23 @@ export function ImageProjectList() {
     setProjects((list) => list.map((item) => (item.id === projectId ? { ...item, title: saved } : item)))
   }
 
+  const remove = async (project: ImageProject) => {
+    await progressService.deleteProject(project.id, project.photoPath)
+    setProjects((list) => list.filter((item) => item.id !== project.id))
+  }
+
   if (projects.length === 0) return null
   return (
     <section className="flex flex-col gap-3">
       <h3 className="text-[15px] font-semibold text-ink-faint">Twoje projekty</h3>
       <ul className="grid list-none grid-cols-1 gap-3 p-0 sm:grid-cols-2 lg:grid-cols-4">
         {projects.map((project) => (
-          <li key={project.id} className="flex flex-col gap-2 rounded-[18px] border border-line bg-surface p-3">
-            <div className="grid aspect-[4/3] place-items-center rounded-[14px] bg-paper-dim">
-              {project.strokes.length > 0 ? (
-                <StrokeThumbnail strokes={project.strokes} className="h-[80%] w-[80%]" />
-              ) : (
-                <span className="text-xs text-ink-faint">jeszcze pusty</span>
-              )}
-            </div>
-            <EditableTitle title={project.title} onRename={(title) => rename(project.id, title)} />
-            <small className="text-[12.5px] text-ink-faint">
-              {project.isDone ? 'Ukończony' : `Krok ${project.stepIndex + 1} z ${project.stepsTotal}`}
-            </small>
-            <Link
-              to={`/app/practice/image?session=${project.id}`}
-              className="mt-auto inline-flex min-h-9 items-center justify-center rounded-full bg-accent px-3.5 text-sm font-semibold text-on-accent transition hover:bg-accent-strong"
-            >
-              {project.isDone ? 'Otwórz' : 'Wróć do projektu'}
-            </Link>
-          </li>
+          <ImageProjectCard
+            key={project.id}
+            project={project}
+            onRename={(title) => rename(project.id, title)}
+            onDelete={() => remove(project)}
+          />
         ))}
       </ul>
     </section>

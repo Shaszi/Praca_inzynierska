@@ -8,6 +8,9 @@ import {
   fitView,
   getPointsFromPointerEvent,
   IDENTITY_VIEW,
+  lerpView,
+  revealView,
+  strokesBounds,
   type Bounds,
   type CanvasView,
 } from "../utils/canvasPoint";
@@ -58,6 +61,8 @@ function sameBounds(a: Bounds | null, b: Bounds | null): boolean {
 
 const MIN_SCALE = 0.5;
 const MAX_SCALE = 6;
+/** Czas dojazdu kadru do linii nowego kroku. Krócej to skok, dłużej — czekanie. */
+const REVEAL_MS = 450;
 // Margines między wzorcem a krawędzią płótna, w pikselach ekranu.
 const FIT_PADDING = 28;
 /**
@@ -172,6 +177,13 @@ export function useCanvas({
   const userAdjustedViewRef = useRef(false);
   /** Rozmiar kadru, dla którego policzono obecne dopasowanie. */
   const fittedSizeRef = useRef<{ width: number; height: number } | null>(null);
+  /** Trwający dojazd kadru do linii kroku — dotyk albo kółko go przerywa. */
+  const revealRafRef = useRef<number | null>(null);
+  const cancelReveal = useCallback(() => {
+    if (revealRafRef.current === null) return;
+    cancelAnimationFrame(revealRafRef.current);
+    revealRafRef.current = null;
+  }, []);
   // Przesuwanie płótna: środkowy przycisk albo prawy. Zapamiętujemy widok z chwili
   // startu, żeby liczyć przesunięcie od niego, a nie kumulować błędu z klatek.
   const panRef = useRef<{ pointerId: number; startX: number; startY: number; origin: CanvasView } | null>(null);
@@ -299,6 +311,7 @@ export function useCanvas({
   // inaczej zoom „ucieka" do narożnika i nie da się nim celować.
   const zoomAt = useCallback(
     (screenX: number, screenY: number, factor: number) => {
+      cancelReveal();
       const current = viewRef.current;
       const nextScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, current.scale * factor));
       if (nextScale === current.scale) return;
@@ -327,7 +340,7 @@ export function useCanvas({
       onViewChange?.(viewRef.current);
       scheduleRedraw();
     },
-    [baseView, onViewChange, scheduleRedraw],
+    [baseView, cancelReveal, onViewChange, scheduleRedraw],
   );
 
   useEffect(() => {
@@ -432,6 +445,8 @@ export function useCanvas({
       if (!canvas) return;
 
       event.preventDefault();
+      // Ręka ma pierwszeństwo przed animacją: kadr staje tam, gdzie jest.
+      cancelReveal();
 
       if (event.pointerType === "touch") {
         const bounds = canvas.getBoundingClientRect();
@@ -485,7 +500,7 @@ export function useCanvas({
       });
       scheduleRedraw();
     },
-    [brushOpacity, brushSize, cancelActiveStroke, onActiveStrokeChange, onCurrentStrokePointCountChange, onEraseAtPoint, onEraseStart, readPinch, scheduleRedraw, tool],
+    [brushOpacity, brushSize, cancelActiveStroke, cancelReveal, onActiveStrokeChange, onCurrentStrokePointCountChange, onEraseAtPoint, onEraseStart, readPinch, scheduleRedraw, tool],
   );
 
   const onPointerMove = useCallback(
@@ -650,6 +665,38 @@ export function useCanvas({
       }
     };
   }, [redrawScene, referenceStrokes]);
+
+  // Nowy krok: gdy jego linia wystaje poza kadr, kadr płynnie do niej dojeżdża (przesunięcie,
+  // a gdy linia się nie mieści — oddalenie). Klucz to obrys linii, nie tablica: wywołujący
+  // podaje nową tablicę co render, a wtedy każdy render ściągałby kadr z powrotem do linii.
+  const guideBounds = strokesBounds(referenceStrokes);
+  const revealKey = guideBounds
+    ? `${guideBounds.minX},${guideBounds.minY},${guideBounds.maxX},${guideBounds.maxY}`
+    : "";
+  useEffect(() => {
+    const bounds = strokesBounds(referenceStrokesRef.current);
+    const { width, height } = metricsRef.current;
+    if (!bounds || width === 0 || height === 0 || isPointerActiveRef.current) return;
+    const from = viewRef.current;
+    const to = revealView(from, bounds, width, height, FIT_PADDING, { min: MIN_SCALE, max: MAX_SCALE });
+    if (!to) return;
+
+    cancelReveal();
+    const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+    const start = performance.now();
+    const tick = (now: number) => {
+      const t = reduceMotion ? 1 : Math.min(1, (now - start) / REVEAL_MS);
+      // Łagodny start i koniec — kadr nie szarpie ani na początku, ani przy zatrzymaniu.
+      const eased = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+      viewRef.current = lerpView(from, to, eased, width, height);
+      layersDirtyRef.current = true;
+      onViewChange?.(viewRef.current);
+      scheduleRedraw();
+      revealRafRef.current = t < 1 ? requestAnimationFrame(tick) : null;
+    };
+    revealRafRef.current = requestAnimationFrame(tick);
+    return cancelReveal;
+  }, [revealKey, cancelReveal, onViewChange, scheduleRedraw]);
 
   // Nowy wzorzec = nowy obrys do wpisania w kadr. Porównanie po wartościach, nie po
   // tożsamości: wywołujący, który liczy obrys w JSX, dawałby nowy obiekt co render,

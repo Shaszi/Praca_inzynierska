@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createPointFromPointerEvent, fitView, IDENTITY_VIEW, strokesBounds, type CanvasView } from './canvasPoint'
+import { createPointFromPointerEvent, fitView, IDENTITY_VIEW, lerpView, revealView, strokesBounds, type CanvasView } from './canvasPoint'
 
 const bounds = { left: 30, top: 50 } as DOMRect
 const sample = (clientX: number, clientY: number) => ({ clientX, clientY, timeStamp: 0 })
@@ -137,5 +137,48 @@ describe('fitView', () => {
     // ...a zapisuje się dokładnie ten sam punkt wzorca, więc ocena porównuje to samo.
     expect(back.x).toBeCloseTo(drawing.x, 6)
     expect(back.y).toBeCloseTo(drawing.y, 6)
+  })
+})
+
+describe('revealView', () => {
+  const onScreen = (x: number, view: CanvasView) => x * view.scale + view.offsetX
+  const box = (minX: number, minY: number, maxX: number, maxY: number) => ({ minX, minY, maxX, maxY })
+
+  it('nic nie zmienia, gdy linia już jest na ekranie', () => {
+    expect(revealView(IDENTITY_VIEW, box(100, 100, 200, 200), 800, 600, 20, LIMITS)).toBeNull()
+  })
+
+  it('linia wystająca za prawą krawędź — tylko przesunięcie, bez zmiany skali', () => {
+    const view = revealView(IDENTITY_VIEW, box(700, 100, 900, 200), 800, 600, 20, LIMITS)!
+    expect(view.scale).toBe(1)
+    expect(onScreen(900, view)).toBeCloseTo(780)
+    expect(view.offsetY).toBe(0)
+  })
+
+  it('linia większa niż ekran w obecnej skali — oddala i centruje', () => {
+    const zoomed = { scale: 4, offsetX: 0, offsetY: 0 }
+    const view = revealView(zoomed, box(0, 0, 400, 100), 800, 600, 20, LIMITS)!
+    expect(view.scale).toBeLessThan(4)
+    expect(onScreen(0, view)).toBeGreaterThanOrEqual(19.5)
+    expect(onScreen(400, view)).toBeLessThanOrEqual(780.5)
+  })
+})
+
+describe('lerpView', () => {
+  const from = { scale: 1, offsetX: 0, offsetY: 0 }
+  const to = { scale: 4, offsetX: -300, offsetY: -200 }
+
+  it('na końcach daje widoki wejściowe', () => {
+    const start = lerpView(from, to, 0, 800, 600)
+    const end = lerpView(from, to, 1, 800, 600)
+    expect(start.scale).toBeCloseTo(1)
+    expect(start.offsetX).toBeCloseTo(0)
+    expect(end.scale).toBeCloseTo(4)
+    expect(end.offsetX).toBeCloseTo(-300)
+    expect(end.offsetY).toBeCloseTo(-200)
+  })
+
+  it('w połowie skala jest średnią geometryczną', () => {
+    expect(lerpView(from, to, 0.5, 800, 600).scale).toBeCloseTo(2)
   })
 })

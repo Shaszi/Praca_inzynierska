@@ -93,6 +93,13 @@ supabase/
   functions/ai/        Edge Function pośrednicząca do Claude API
 ```
 
+### Zasady podziału kodu
+
+- **Komponenty zamiast rozbudowanych stron.** Strona w `pages/` tylko składa ekran i trzyma jego stan. Każdy wyraźny fragment interfejsu (karta, panel, okno, ekran etapu) to osobny komponent w `features/<moduł>/components/`.
+- **Więcej małych plików zamiast jednego dużego.** Nowa funkcja dostaje nowy plik, a nie kolejne sto linii w istniejącym. Plik, który zaczyna mieć kilka niezależnych części, dzielimy od razu.
+- **Grupowanie po trybie.** Komponenty jednego trybu leżą w podfolderze, np. `practice/components/image/` (rysunek ze zdjęcia), `practice/components/reference/` (ćwiczenie z wzorcem), `progress/components/dashboard/` (pulpit).
+- **Logika poza widokiem.** Obliczenia (kontury, ocena kreski, cel i seria) siedzą w `utils/` jako czyste funkcje z testami, a nie w komponentach.
+
 ## Licencje wykorzystanego oprogramowania
 
 | Komponent | Licencja |

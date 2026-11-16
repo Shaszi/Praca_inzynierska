@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
 import { Button, PageHeader } from '../components/ui'
 import { DebugPanel } from '../components/DebugPanel'
 import { FeedbackPanel } from '../components/FeedbackPanel'
 import { Modal } from '../components/Modal'
 import { BrushPanel } from '../features/canvas/components/BrushPanel'
 import { useBrushSettings } from '../features/canvas/hooks/useBrushSettings'
+import { NextStepButton } from '../features/practice/components/NextStepButton'
 import { PracticeLayout } from '../features/practice/components/PracticeLayout'
+import { CompletedBanner } from '../features/practice/components/reference/CompletedBanner'
+import { LayersDock } from '../features/practice/components/reference/LayersDock'
+import { ReferencePickerModal } from '../features/practice/components/reference/ReferencePickerModal'
 import { PracticeToolbar } from '../features/practice/components/PracticeToolbar'
 import { useSmoothingSettings } from '../features/canvas/hooks/useSmoothingSettings'
 import { PracticeCanvas } from '../features/practice/components/PracticeCanvas'
@@ -16,8 +19,6 @@ import { useStrokeComment } from '../features/practice/hooks/useStrokeComment'
 import { useReferenceGuide } from '../features/practice/hooks/useReferenceGuide'
 import { isWarmupId } from '../features/practice/warmups'
 import { usePracticeSession } from '../features/progress/hooks/usePracticeSession'
-import { LibraryGrid, type LibraryAction } from '../features/teacher/components/LibraryGrid'
-import { LayerPanel } from '../features/canvas/components/LayerPanel'
 import { PRACTICE_LAYER_ID, useLayers } from '../features/canvas/hooks/useLayers'
 import { strokesBounds } from '../features/canvas/utils/canvasPoint'
 import type { Point, ReferenceDrawing, Stroke, Tool } from '../types/drawing'
@@ -241,18 +242,11 @@ export function PracticePage() {
     resetAiComment()
   }, [currentGuideStrokeIndex, discardAttempt, removeStrokesForStep, resetAnalysis, resetAiComment])
 
-  // Siatka w modalu dostaje jedną akcję: wybór kończy się zamknięciem okna.
-  const pickerActions = useMemo<LibraryAction[]>(
-    () => [
-      {
-        label: 'Wybierz',
-        variant: 'primary',
-        onRun: (id: string) => {
-          setSelectedReferenceId(id)
-          setIsPickerOpen(false)
-        },
-      },
-    ],
+  const handlePickReference = useCallback(
+    (id: string) => {
+      setSelectedReferenceId(id)
+      setIsPickerOpen(false)
+    },
     [setSelectedReferenceId],
   )
 
@@ -366,6 +360,7 @@ export function PracticePage() {
               }}
               onOpenBrush={() => setIsBrushOpen((open) => !open)}
               isBrushOpen={isBrushOpen}
+              brushColor={brush.color}
               onStepBack={handleStepBack}
               canStepBack={canStepBack}
               onUndo={handleUndo}
@@ -394,29 +389,19 @@ export function PracticePage() {
         }
         canvas={
           <div className="relative flex min-h-[420px] flex-1 gap-3.5">
-            {/* Panel warstw dokowany z lewej, jak `.fs-layers` w projekcie. */}
             {isLayersOpen && (
-              <aside
-                className="w-[290px] max-w-[88%] shrink-0 overflow-auto rounded-[18px] border border-line bg-surface p-3.5"
-                aria-label="Warstwy"
-              >
-                <LayerPanel
-                  layers={layers}
-                  activeLayerId={activeLayerId}
-                  guideOpacity={guideOpacity}
-                  onGuideOpacity={setGuideOpacity}
-                  guideStrokes={allReferenceStrokes}
-                  onSelect={setActiveLayerId}
-                  onToggleVisible={(id) =>
-                    updateLayer(id, (layer) => ({ ...layer, visible: !layer.visible }))
-                  }
-                  onToggleLock={(id) => updateLayer(id, (layer) => ({ ...layer, locked: !layer.locked }))}
-                  onOpacity={(id, value) => updateLayer(id, (layer) => ({ ...layer, opacity: value }))}
-                  onMove={moveLayer}
-                  onRemove={removeLayer}
-                  onAdd={addLayer}
-                />
-              </aside>
+              <LayersDock
+                layers={layers}
+                activeLayerId={activeLayerId}
+                guideOpacity={guideOpacity}
+                onGuideOpacity={setGuideOpacity}
+                guideStrokes={allReferenceStrokes}
+                onSelect={setActiveLayerId}
+                onUpdate={updateLayer}
+                onMove={moveLayer}
+                onRemove={removeLayer}
+                onAdd={addLayer}
+              />
             )}
 
             <div className="relative min-w-0 flex-1">
@@ -439,10 +424,11 @@ export function PracticePage() {
               fitBounds={fitBounds}
             />
             {awaitingNext && (
-              // Na tablecie panel oceny bywa pod płótnem — przycisk musi być tam, gdzie ręka.
-              <Button variant="primary" className="absolute right-3 bottom-3 z-10 shadow-lg" onClick={handleNextStroke}>
-                {currentGuideStrokeIndex >= totalStrokes - 1 ? 'Zakończ' : 'Następna kreska'}
-              </Button>
+              <NextStepButton
+                isLast={currentGuideStrokeIndex >= totalStrokes - 1}
+                label="Następna kreska"
+                onClick={handleNextStroke}
+              />
             )}
             {!selectedReference ? (
               <p className="pointer-events-none absolute inset-x-0 top-1/2 -translate-y-1/2 text-center text-ink-faint">
@@ -471,44 +457,16 @@ export function PracticePage() {
         }
       />
 
-      {isCompleted && (
-        <section className="flex flex-col gap-3 rounded-[18px] border border-success/30 bg-success-soft px-4 py-3.5 sm:flex-row sm:items-center">
-          <div className="flex-1">
-            <p className="font-medium text-success">Wzorzec ukończony</p>
-            <p className="text-sm text-ink-soft">Rysunek zapisał się w historii i liczy się do dzisiejszego celu.</p>
-          </div>
-          <div className="flex gap-2">
-            <Link
-              to="/app/progress"
-              className="flex min-h-11 items-center rounded-full border border-ink-faint bg-surface px-4 text-[15px] font-semibold text-ink transition hover:bg-surface-dim"
-            >
-              Zobacz postęp
-            </Link>
-            <Button variant="primary" onClick={handleClear}>
-              Narysuj ponownie
-            </Button>
-          </div>
-        </section>
-        )}
+      {isCompleted && <CompletedBanner onRestart={handleClear} />}
 
-        {isPickerOpen && (
-        <Modal title="Wybierz wzorzec" size="lg" closeLabel="Zamknij" onClose={() => setIsPickerOpen(false)}>
-          <div className="mb-3 flex flex-wrap items-center gap-2">
-            <Button variant="ghost" size="sm" onClick={refreshReferences} disabled={isLoadingReferences}>
-              Odśwież
-            </Button>
-            <Link to="/app/library" className="text-sm font-semibold text-accent underline-offset-2 hover:underline">
-              Otwórz pełną bibliotekę
-            </Link>
-          </div>
-          <LibraryGrid
-            references={savedReferences}
-            isLoading={isLoadingReferences}
-            showStatus={false}
-            emptyText="Nie ma żadnego wzorca. Narysuj własny w edytorze albo zajrzyj do biblioteki."
-            actions={pickerActions}
-          />
-        </Modal>
+      {isPickerOpen && (
+        <ReferencePickerModal
+          references={savedReferences}
+          isLoading={isLoadingReferences}
+          onRefresh={refreshReferences}
+          onPick={handlePickReference}
+          onClose={() => setIsPickerOpen(false)}
+        />
       )}
 
       {lockedWarning && (

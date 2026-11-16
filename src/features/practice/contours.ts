@@ -20,11 +20,21 @@ export type ContourOptions = {
   minLengthPx?: number
   /** Tolerancja upraszczania łamanej. */
   simplifyEpsilonPx?: number
+  /**
+   * Jak blisko siebie mogą biec dwie linie. Bliżej = to ta sama krawędź narysowana dwa razy
+   * (np. dwa boki cienkiego pasma włosów) i krótsza jest wycinana. Domyślnie 0,6% przekątnej.
+   */
+  minGapPx?: number
+  /**
+   * Które piksele wolno brać pod uwagę (np. wnętrze lassa). Krawędzie poza nimi są
+   * kasowane przed śledzeniem łańcuchów, więc sama granica zaznaczenia nie staje się linią.
+   */
+  keep?: (x: number, y: number) => boolean
   /** Górny limit konturów — do promptu i na płótno nie ma sensu brać tysiąca. */
   maxContours?: number
 }
 
-const DEFAULTS: Required<ContourOptions> = {
+const DEFAULTS: Required<Omit<ContourOptions, 'minGapPx' | 'keep'>> = {
   // Zmierzone na obrazkach testowych: 0.3–0.65 daje czysty obrys bez śmieci, poniżej
   // wracają cienie, powyżej gubią się dłuższe kontury. 0.45 to środek tego przedziału.
   edgeQuantile: 0.45,
@@ -235,6 +245,59 @@ export function simplify(points: ContourPoint[], epsilon: number): ContourPoint[
 }
 
 /**
+ * Usuwa dublujące się linie. Łańcuchy idą od najdłuższego; fragment, który biegnie bliżej
+ * niż `gap` od już przyjętej linii, jest wycinany, a reszta łańcucha dzieli się w tym
+ * miejscu na osobne kawałki. Krótkie resztki odpadają.
+ *
+ * Łańcuch blokuje też sam siebie, ale z opóźnieniem `lag` punktów — inaczej każdy punkt
+ * blokowałby swojego sąsiada. Dzięki temu pętla wokół cienkiego kształtu (tam jednym
+ * brzegiem, z powrotem drugim) zostaje jedną linią, a nie dwiema równoległymi.
+ *
+ * Wejście to gęste łańcuchy z `traceChains` (sąsiednie piksele), nie uproszczone łamane.
+ */
+export function removeOverlaps(
+  chains: ContourPoint[][],
+  width: number,
+  height: number,
+  gap: number,
+  minLength: number,
+): ContourPoint[][] {
+  const taken = new Uint8Array(width * height)
+  const radius = Math.max(1, Math.round(gap))
+  const stamp = (p: ContourPoint) => {
+    for (let dy = -radius; dy <= radius; dy++) {
+      const y = p.y + dy
+      if (y < 0 || y >= height) continue
+      for (let dx = -radius; dx <= radius; dx++) {
+        const x = p.x + dx
+        if (x < 0 || x >= width || dx * dx + dy * dy > radius * radius) continue
+        taken[y * width + x] = 1
+      }
+    }
+  }
+  const lag = radius * 3
+
+  const kept: ContourPoint[][] = []
+  for (const chain of [...chains].sort((a, b) => b.length - a.length)) {
+    const free = chain.map(() => false)
+    let run: ContourPoint[] = []
+    const flush = () => {
+      if (pathLength(run) >= minLength) kept.push(run)
+      run = []
+    }
+    chain.forEach((point, i) => {
+      if (i >= lag && free[i - lag]) stamp(chain[i - lag])
+      free[i] = !taken[point.y * width + point.x]
+      if (free[i]) run.push(point)
+      else flush()
+    })
+    flush()
+    for (let i = Math.max(0, chain.length - lag); i < chain.length; i++) if (free[i]) stamp(chain[i])
+  }
+  return kept
+}
+
+/**
  * Pełny potok: piksele RGBA → lista konturów w układzie obrazu, od najdłuższego.
  * Najdłuższe kontury pierwsze, bo to one niosą kształt, a nie detal.
  */
@@ -245,12 +308,18 @@ export function extractContours(
   options: ContourOptions = {},
 ): ContourPoint[][] {
   const { edgeQuantile, minLengthPx, simplifyEpsilonPx, maxContours } = { ...DEFAULTS, ...options }
+  const minGapPx = options.minGapPx ?? Math.max(4, Math.hypot(width, height) * 0.006)
   const gradient = sobel(blur3(toGrayscale(rgba, width, height), width, height), width, height)
   const threshold = quantileThreshold(gradient.magnitude, edgeQuantile)
   const edges = thinEdges(gradient, width, height, threshold)
+  if (options.keep) {
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) if (!options.keep(x, y)) edges[y * width + x] = 0
+    }
+  }
 
-  return traceChains(edges, width, height)
-    .filter((chain) => pathLength(chain) >= minLengthPx)
+  const chains = traceChains(edges, width, height).filter((chain) => pathLength(chain) >= minLengthPx)
+  return removeOverlaps(chains, width, height, minGapPx, minLengthPx)
     .map((chain) => simplify(chain, simplifyEpsilonPx))
     .filter((chain) => chain.length >= 2)
     .sort((a, b) => pathLength(b) - pathLength(a))

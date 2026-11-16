@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { extractContours, pathLength, simplify, toGrayscale, traceChains } from './contours'
+import { extractContours, pathLength, removeOverlaps, simplify, toGrayscale, traceChains } from './contours'
 
 /** Płótno RGBA wypełnione bielą, na którym można postawić czarne piksele. */
 function canvas(width: number, height: number) {
@@ -103,5 +103,36 @@ describe('extractContours', () => {
     const shape = canvas(200, 200)
     for (let i = 0; i < 20; i++) shape.rect(i * 9 + 2, 5, i * 9 + 7, 190)
     expect(extractContours(shape.data, 200, 200, { maxContours: 5 }).length).toBeLessThanOrEqual(5)
+  })
+})
+
+describe('removeOverlaps', () => {
+  const line = (y: number, x0: number, x1: number) => Array.from({ length: x1 - x0 }, (_, i) => ({ x: x0 + i, y }))
+
+  it('z dwóch równoległych linii zostawia dłuższą', () => {
+    const kept = removeOverlaps([line(10, 0, 80), line(13, 0, 100)], 120, 40, 5, 20)
+    expect(kept).toHaveLength(1)
+    expect(kept[0]).toHaveLength(100)
+  })
+
+  it('krzyżująca się linia traci tylko kawałek przy skrzyżowaniu', () => {
+    const vertical = Array.from({ length: 100 }, (_, i) => ({ x: 50, y: i }))
+    const kept = removeOverlaps([line(50, 0, 100), vertical], 100, 100, 4, 20)
+    // Pozioma w całości, pionowa w dwóch kawałkach rozdzielonych luką przy przecięciu.
+    expect(kept).toHaveLength(3)
+    expect(kept.slice(1).every((part) => part.every((p) => Math.abs(p.y - 50) > 4))).toBe(true)
+  })
+
+  it('pętla tam i z powrotem staje się jedną linią', () => {
+    const loop = [...line(20, 0, 100), ...line(23, 0, 100).reverse()]
+    const kept = removeOverlaps([loop], 120, 40, 5, 20)
+    expect(kept.reduce((sum, part) => sum + pathLength(part), 0)).toBeLessThan(120)
+  })
+
+  it('cienki pasek na zdjęciu daje jedną linię, a nie dwie', () => {
+    const image = canvas(160, 60).rect(20, 28, 140, 31)
+    const total = extractContours(image.data, 160, 60).reduce((sum, c) => sum + pathLength(c), 0)
+    // Pasek ma 120 px; dwa brzegi dałyby ~240.
+    expect(total).toBeLessThan(170)
   })
 })

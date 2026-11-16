@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { fitStrokesToSquare, splitToSingleContourSteps } from './aiImageGuide'
+import { buildSteps, fitStrokesToSquare } from './aiImageGuide'
 import type { Stroke } from '../types/drawing'
 
 const stroke = (points: [number, number][]): Stroke => ({
@@ -60,49 +60,34 @@ describe('fitStrokesToSquare', () => {
   })
 })
 
-describe('splitToSingleContourSteps', () => {
+describe('buildSteps', () => {
   const contour = (n: number) => Array.from({ length: n }, (_, i) => ({ x: i, y: i }))
-  const contours = [contour(5), contour(6), contour(7), contour(8)]
+  const plan = [
+    { points: contour(5), role: 'outline' as const },
+    { points: contour(6), role: 'structure' as const },
+    { points: contour(7), role: 'detail' as const },
+  ]
+  const label = (i: number, title: string, background = false) => ({ i, title, description: 'Opis', background })
 
-  it('krok z jednym konturem zostaje jednym krokiem', () => {
-    const steps = splitToSingleContourSteps([{ title: 'Uchwyt', description: 'Łukiem', contours: [2] }], contours)
-    expect(steps).toHaveLength(1)
-    expect(steps[0].title).toBe('Uchwyt')
-    expect(steps[0].strokes).toHaveLength(1)
-  })
-
-  // To jest reguła, dla której ta funkcja istnieje: ocena porównuje kreskę z jedną linią.
-  it('każdy krok ma dokładnie jedną linię', () => {
-    const steps = splitToSingleContourSteps(
-      [
-        { title: 'Obrys', description: 'Od góry', contours: [0, 1] },
-        { title: 'Detale', description: 'Drobne', contours: [2, 3] },
-      ],
-      contours,
-    )
-    expect(steps).toHaveLength(4)
-    for (const step of steps) expect(step.strokes).toHaveLength(1)
-  })
-
-  it('numeruje tytuł, gdy rzecz rozpada się na kilka linii', () => {
-    const steps = splitToSingleContourSteps([{ title: 'Obrys', description: 'x', contours: [0, 1, 2] }], contours)
-    expect(steps.map((s) => s.title)).toEqual(['Obrys (1 z 3)', 'Obrys (2 z 3)', 'Obrys (3 z 3)'])
-  })
-
-  it('pomija numery konturów, których nie ma', () => {
-    const steps = splitToSingleContourSteps([{ title: 'Obrys', description: 'x', contours: [0, 99] }], contours)
-    expect(steps).toHaveLength(1)
-    expect(steps[0].title).toBe('Obrys')
-  })
-
-  it('nadaje krokom kolejne identyfikatory mimo rozbicia', () => {
-    const steps = splitToSingleContourSteps(
-      [
-        { title: 'A', description: 'x', contours: [0, 1] },
-        { title: 'B', description: 'x', contours: [2] },
-      ],
-      contours,
-    )
+  it('zachowuje kolejność planu, a nie kolejność nazw od modelu', () => {
+    const steps = buildSteps(plan, [label(2, 'Oko'), label(0, 'Głowa'), label(1, 'Szyja')], true)
+    expect(steps.map((s) => s.title)).toEqual(['Głowa', 'Szyja', 'Oko'])
     expect(steps.map((s) => s.id)).toEqual(['step-0', 'step-1', 'step-2'])
+  })
+
+  // To jest reguła, dla której kroki istnieją: ocena porównuje kreskę z jedną linią.
+  it('każdy krok ma dokładnie jedną linię', () => {
+    for (const step of buildSteps(plan, [], true)) expect(step.strokes).toHaveLength(1)
+  })
+
+  it('krok bez nazwy od modelu dostaje nazwę po roli zamiast wypaść', () => {
+    const steps = buildSteps(plan, [], true)
+    expect(steps.map((s) => s.title)).toEqual(['Obrys sylwetki', 'Główna linia', 'Detal'])
+  })
+
+  it('z maską ignoruje znacznik tła, bez maski usuwa linię tła', () => {
+    const labels = [label(0, 'Głowa'), label(1, 'Ściana', true), label(2, 'Oko')]
+    expect(buildSteps(plan, labels, true)).toHaveLength(3)
+    expect(buildSteps(plan, labels, false).map((s) => s.title)).toEqual(['Głowa', 'Oko'])
   })
 })

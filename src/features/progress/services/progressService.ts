@@ -208,6 +208,15 @@ export const progressService = {
     if (error) fail('Nie udało się zapisać postępu', error)
   },
 
+  /** Zmiana nazwy projektu. Baza przyjmuje 1–200 znaków, więc pilnujemy tego tutaj. */
+  async renameProject(sessionId: string, title: string): Promise<string> {
+    const clean = title.trim().slice(0, 200)
+    if (!clean) throw new Error('Nazwa nie może być pusta.')
+    const { error } = await supabase.from('practice_sessions').update({ title: clean }).eq('id', sessionId)
+    if (error) fail('Nie udało się zmienić nazwy', error)
+    return clean
+  },
+
   /** Projekt do wznowienia: kurs, zdjęcie, kreski i krok, na którym ćwiczący stanął. */
   async getProject(sessionId: string): Promise<{
     title: string

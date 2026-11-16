@@ -34,7 +34,7 @@ type AiRequest =
       stepDescription: string
     }
   | { action: 'analyze-stroke'; stepTitle: string; metrics: StrokeMetrics }
-  | { action: 'plan-contours'; image: ImagePayload; contours: ContourSummary[] }
+  | { action: 'plan-contours'; image: ImagePayload; overlay: ImagePayload; contours: ContourSummary[]; hasMask: boolean }
 
 // Wynik lokalnego algorytmu oceny kreski (strokeEvaluation.ts). Model dostaje gotowe
 // liczby zamiast obrazka: taniej i trafniej, bo nie musi niczego zgadywać z miniatury.
@@ -73,6 +73,8 @@ type ContourSummary = {
   len: number
   /** Czy kontur jest domknięty (koniec wraca do początku). */
   closed: boolean
+  /** Rola w planie: obrys obiektu, linia konstrukcyjna albo detal. */
+  role: 'outline' | 'structure' | 'detail'
 }
 
 /** Błąd z komunikatem dla użytkownika (po polsku) i kodem do obsługi po stronie klienta. */
@@ -156,6 +158,9 @@ function assertContours(value: unknown): asserts value is ContourSummary[] {
     assertFinite(c?.i, 'contour.i')
     assertFinite(c?.len, 'contour.len')
     if (typeof c?.closed !== 'boolean') throw new HttpError(400, 'Nieprawidłowe pole closed', 'invalid_input')
+    if (!['outline', 'structure', 'detail'].includes(c?.role as string)) {
+      throw new HttpError(400, 'Nieprawidłowe pole role', 'invalid_input')
+    }
     if (!Array.isArray(c?.box) || c.box.length !== 4) {
       throw new HttpError(400, 'Nieprawidłowe pole box', 'invalid_input')
     }
@@ -201,90 +206,81 @@ function completeSentences(message: Anthropic.Message): string {
   throw new HttpError(502, 'Odpowiedź AI została ucięta. Spróbuj jeszcze raz.', 'truncated')
 }
 
-const CONTOUR_PLAN_PROMPT = `Jesteś instruktorem rysunku. Na zdjęciu widzisz obiekt, a poniżej listę
-konturów, które program wykrył na TYM zdjęciu. Twoim zadaniem jest ułożyć z nich kurs rysowania.
+const CONTOUR_LABEL_PROMPT = `Jesteś instruktorem rysunku. Program przygotował już kurs rysowania
+ze zdjęcia: wybrał linie i ustalił ich kolejność. Twoim jedynym zadaniem jest nazwać kroki.
+Nie zmieniasz kolejności, nie łączysz i nie usuwasz kroków.
 
-Nie rysujesz i nie podajesz żadnych współrzędnych. Odwołujesz się wyłącznie do numerów konturów.
+OBRAZY
+Pierwszy obraz to oryginalne zdjęcie. Drugi to linie kursu narysowane na zdjęciu: każda ma
+swój kolor i numer przy środku. Numer to numer kroku z listy poniżej. Zanim nazwiesz krok,
+znajdź jego numer na drugim obrazie i sprawdź, co ta linia naprawdę obrysowuje. Nie zgaduj
+po samej ramce.
 
-GŁÓWNY OBIEKT
-Najpierw ustal jeden główny obiekt zdjęcia i wpisz go w pole "subject". Jeśli na zdjęciu jest
-człowiek albo zwierzę, to on jest głównym obiektem. W przeciwnym razie główny obiekt to rzecz
-najbardziej wyeksponowana: największa, najostrzejsza, najbliżej środka kadru.
-Kurs obejmuje WYŁĄCZNIE kontury głównego obiektu. Kontury tła i otoczenia (ściany, niebo,
-podłoga, meble i przedmioty za nim, inne osoby w tle, cienie rzucane na tło, krawędzie kadru)
-pomijasz — nie trafiają do żadnego kroku.
+ROLE KROKÓW
+- "outline": linia leży na obrysie obiektu (sylwetka, zewnętrzna krawędź).
+- "structure": długa linia wewnątrz obiektu, która buduje bryłę.
+- "detail": krótsza linia detalu.
 
-ZASADY
-1. Każdy kontur głównego obiektu trafia do dokładnie jednego kroku. Żadnego nie wolno użyć
-   dwa razy. Kontur tła nie trafia nigdzie.
-2. Kolejność od konstrukcji do detalu: najpierw kontury największe i niosące kształt bryły,
-   potem średnie, na końcu drobne. Nikt nie zaczyna rysunku od szczegółu.
-3. Jeden krok to jeden kontur. Użytkownik rysuje krok jednym pociągnięciem i tak jest
-   oceniany, więc dwa kontury w kroku są nie do narysowania naraz.
-4. Kilka konturów w jednym kroku dawaj wyłącznie wtedy, gdy są tą samą rzeczą rozciętą
-   na kawałki (np. obrys przerwany w dwóch miejscach). Program i tak rozłoży je na
-   osobne kroki, a Twój tytuł posłuży im wszystkim.
-
-JAK CZYTAĆ LISTĘ
-- "box" to ramka konturu w ułamkach zdjęcia: [lewa, góra, prawa, dół], gdzie 0 to lewa/górna
-  krawędź zdjęcia, a 1 prawa/dolna. Po ramce poznajesz, której części obiektu dotyczy kontur.
-- "len" to długość konturu w ułamku przekątnej zdjęcia. Duże "len" to główny kształt.
-- "closed": true to kontur zamknięty, czyli owal albo obrys.
+POLA
+- "subject": jednym-dwoma słowami, co jest głównym obiektem zdjęcia.
+- Dla każdego kroku "i" (numer z listy), "title" i "description".
+- "background": true tylko wtedy, gdy linia NIE należy do głównego obiektu (ściana, niebo,
+  meble, inne osoby, krawędź kadru). Jeśli na zdjęciu jest człowiek albo zwierzę, to on jest
+  głównym obiektem; w przeciwnym razie rzecz najbardziej wyeksponowana.
 
 TEKST
-Tytuł: 2-5 słów, nazwij rzecz po imieniu, patrząc na zdjęcie ("Elipsa otworu kubka",
-a nie "Kontur 3"). Opis: jedno zdanie, jak poprowadzić rękę. Po polsku.`
+Tytuł: 2-5 słów, nazwij rzecz po imieniu, patrząc na zdjęcie ("Linia ramienia", "Obrys
+głowy — lewa strona", a nie "Kontur 3"). Kolejne odcinki tej samej rzeczy rozróżnij
+(lewa/prawa, góra/dół). Opis: jedno zdanie, jak poprowadzić rękę, po polsku.`
 
-const CONTOUR_PLAN_SCHEMA = {
+const MASK_NOTE = `
+UWAGA: użytkownik sam zaznaczył obiekt (stuknięciem albo lassem) i program wziął linie tylko
+z zaznaczenia. Wszystkie linie należą do obiektu — w każdym kroku ustaw "background": false.`
+
+const CONTOUR_LABEL_SCHEMA = {
   type: 'object',
   properties: {
-    steps: {
+    subject: { type: 'string' },
+    labels: {
       type: 'array',
       items: {
         type: 'object',
         properties: {
+          i: { type: 'number' },
           title: { type: 'string' },
           description: { type: 'string' },
-          contours: { type: 'array', items: { type: 'number' } },
+          background: { type: 'boolean' },
         },
-        required: ['title', 'description', 'contours'],
+        required: ['i', 'title', 'description', 'background'],
         additionalProperties: false,
       },
     },
-    // Przed krokami: model najpierw nazywa obiekt, potem wybiera tylko jego kontury.
-    subject: { type: 'string' },
   },
-  required: ['subject', 'steps'],
+  required: ['subject', 'labels'],
   additionalProperties: false,
 }
 
-type ContourStep = { title: string; description: string; contours: number[] }
+type ContourLabel = { i: number; title: string; description: string; background: boolean }
 
 /**
- * Plan modelu jest propozycją, nie prawdą: kontur przypisany dwa razy albo numer spoza
- * listy psułby kurs. Bierzemy każdy kontur najwyżej raz. Kontury pominięte przez model to tło
- * — zostają poza kursem, bo rysujemy tylko główny obiekt.
+ * Nazwy od modelu są propozycją: numer spoza listy albo pusty tytuł odpada, a każdy numer
+ * liczy się raz. Brak nazwy nie jest błędem — klient da krokowi nazwę po roli.
  */
-function planContourSteps(message: Anthropic.Message, available: number[]): ContourStep[] {
+function parseContourLabels(message: Anthropic.Message, available: number[]): ContourLabel[] {
   assertNotRefused(message)
   if (message.stop_reason === 'max_tokens') {
-    throw new HttpError(502, 'Plan rysowania okazał się za długi. Spróbuj jeszcze raz.', 'truncated')
+    throw new HttpError(502, 'Opis kroków okazał się za długi. Spróbuj jeszcze raz.', 'truncated')
   }
-  const { steps } = JSON.parse(textOf(message)) as { steps: ContourStep[] }
-
+  const { labels } = JSON.parse(textOf(message)) as { labels: ContourLabel[] }
   const left = new Set(available)
-  const planned: ContourStep[] = []
-  for (const step of steps) {
-    if (!step?.title?.trim() || !step?.description?.trim()) continue
-    const taken = (Array.isArray(step.contours) ? step.contours : []).filter((index) => left.delete(index))
-    if (taken.length === 0) continue
-    planned.push({ title: step.title.trim(), description: step.description.trim(), contours: taken })
-  }
-
-  if (planned.length === 0) {
-    throw new HttpError(502, 'AI nie przygotowało planu dla tego zdjęcia. Spróbuj innego.', 'empty')
-  }
-  return planned
+  return (Array.isArray(labels) ? labels : [])
+    .filter((label) => typeof label?.i === 'number' && left.delete(label.i))
+    .map((label) => ({
+      i: label.i,
+      title: String(label.title ?? '').trim().slice(0, 80),
+      description: String(label.description ?? '').trim().slice(0, 300),
+      background: label.background === true,
+    }))
 }
 
 function imageStepPrompt(title: string, description: string): string {
@@ -382,26 +378,28 @@ async function handle(client: Anthropic, body: AiRequest): Promise<unknown> {
 
     case 'plan-contours': {
       assertImagePayload(body.image, 'image')
+      assertImagePayload(body.overlay, 'overlay')
       assertContours(body.contours)
       const list = body.contours
-        .map((c) => `${c.i}: box=[${c.box.map((n) => n.toFixed(2)).join(', ')}] len=${c.len.toFixed(3)} closed=${c.closed}`)
+        .map((c) => `${c.i}: role=${c.role} box=[${c.box.map((n) => n.toFixed(2)).join(', ')}] len=${c.len.toFixed(3)} closed=${c.closed}`)
         .join(String.fromCharCode(10))
       const message = await client.messages.create({
         model: MODEL,
         // Sam plan: tytuły, opisy i numery. Bez geometrii mieści się w ułamku tego,
         // czego wymagało dyktowanie współrzędnych przez model.
-        max_tokens: 4000,
+        max_tokens: 6000,
         thinking: NO_THINKING,
-        output_config: { format: { type: 'json_schema', schema: CONTOUR_PLAN_SCHEMA } },
+        output_config: { format: { type: 'json_schema', schema: CONTOUR_LABEL_SCHEMA } },
         messages: [{
           role: 'user',
           content: [
             { type: 'image', source: { type: 'base64', media_type: body.image.mediaType, data: body.image.data } },
-            { type: 'text', text: CONTOUR_PLAN_PROMPT + String.fromCharCode(10, 10) + 'KONTURY:' + String.fromCharCode(10) + list },
+            { type: 'image', source: { type: 'base64', media_type: body.overlay.mediaType, data: body.overlay.data } },
+            { type: 'text', text: CONTOUR_LABEL_PROMPT + (body.hasMask === true ? MASK_NOTE : '') + String.fromCharCode(10, 10) + 'KROKI (w kolejności rysowania):' + String.fromCharCode(10) + list },
           ],
         }],
       })
-      return { steps: planContourSteps(message, body.contours.map((c) => c.i)) }
+      return { labels: parseContourLabels(message, body.contours.map((c) => c.i)) }
     }
 
     case 'analyze-stroke': {

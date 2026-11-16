@@ -24,6 +24,8 @@ type UsePracticeSessionResult = {
   reset: () => void
   /** Zapisuje stan w trakcie, żeby dało się wrócić do projektu na tym samym kroku. */
   saveProgress: (stepIndex: number, strokes: Stroke[]) => void
+  /** Zmienia nazwę sesji; zwraca nazwę po oczyszczeniu. */
+  rename: (title: string) => Promise<string>
   saveError: string | null
 }
 
@@ -129,5 +131,11 @@ export function usePracticeSession(params: SessionParams | null): UsePracticeSes
     [ensureSession, report, reset],
   )
 
-  return { recordAttempt, discardAttempt, complete, reset, saveProgress, saveError }
+  /** Sesja już w bazie — zmieniamy nazwę tam; jeszcze nie — nowa nazwa pójdzie z parametrami przy starcie. */
+  const rename = useCallback(async (title: string) => {
+    const session = sessionIdRef.current
+    return session ? progressService.renameProject(await session, title) : title.trim()
+  }, [])
+
+  return { recordAttempt, discardAttempt, complete, reset, saveProgress, rename, saveError }
 }

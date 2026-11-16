@@ -1,5 +1,5 @@
 import type { ComponentType, SVGProps } from 'react'
-import { ChartIcon, HomeIcon, ImageIcon, LayersIcon, PencilIcon } from '../icons'
+import { ChartIcon, HomeIcon, ImageIcon, LayersIcon, PencilIcon, SettingsIcon } from '../icons'
 
 export type NavItem = {
   to: string
@@ -22,5 +22,6 @@ export function navItemsFor(hasRole: (role: 'moderator' | 'admin') => boolean): 
     ...BASE_ITEMS,
     ...(hasRole('moderator') ? [{ to: '/app/moderation', label: 'Moderacja', icon: ChartIcon }] : []),
     ...(hasRole('admin') ? [{ to: '/app/admin', label: 'Panel', icon: HomeIcon }] : []),
+    { to: '/app/settings', label: 'Ustawienia', icon: SettingsIcon },
   ]
 }

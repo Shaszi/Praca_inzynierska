@@ -100,6 +100,19 @@ isOneToOne: false
                   Relationships: [
                     
                   ]
+                },"user_settings": {
+                  Row: {
+                    "settings": NonNullable<Json>,"updated_at": string,"user_id": string
+                  }
+                  Insert: {
+                    "settings"?: NonNullable<Json>,"updated_at"?: string,"user_id"?: string
+                  }
+                  Update: {
+                    "settings"?: NonNullable<Json>,"updated_at"?: string,"user_id"?: string
+                  }
+                  Relationships: [
+                    
+                  ]
                 }
           }
           Views: {

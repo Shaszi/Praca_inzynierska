@@ -13,6 +13,7 @@ import { LandingPage } from './pages/LandingPage'
 import { NotFoundPage } from './pages/NotFoundPage'
 import { PracticePage } from './pages/PracticePage'
 import { ProgressPage } from './pages/ProgressPage'
+import { SettingsPage } from './pages/SettingsPage'
 import { TeacherPage } from './pages/TeacherPage'
 
 const router = createBrowserRouter([
@@ -40,6 +41,7 @@ const router = createBrowserRouter([
             children: [{ path: 'admin', element: <AdminPage /> }],
           },
           { path: 'progress', element: <ProgressPage /> },
+          { path: 'settings', element: <SettingsPage /> },
         ],
       },
     ],

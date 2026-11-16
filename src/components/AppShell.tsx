@@ -7,6 +7,7 @@ import { RoleBadge, StreakChip, UserAvatar } from './shell/HeaderBadges'
 import { userLabel } from './shell/userLabel'
 import { NavDrawer } from './shell/NavDrawer'
 import { navItemsFor } from './shell/navItems'
+import { SettingsProvider } from '../features/settings/SettingsProvider'
 
 const DRAWER_ID = 'app-nav-drawer'
 
@@ -72,7 +73,9 @@ export function AppShell() {
 
       <main className="flex min-h-0 flex-1 px-4 pb-8 md:px-6">
         <div className="mx-auto flex min-h-0 w-full max-w-[1520px] flex-1">
-          <Outlet />
+          <SettingsProvider>
+            <Outlet />
+          </SettingsProvider>
         </div>
       </main>
 

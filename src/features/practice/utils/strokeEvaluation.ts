@@ -303,7 +303,7 @@ const TOO_SHORT: StrokeEvaluation = {
   speedPxPerSec: 0,
   reversed: false,
   worstPoint: null,
-  summary: 'Za krótka kreska — narysuj całą linię jednym ruchem.',
+  summary: 'Za mało, żeby ocenić — dorysuj dalszą część linii.',
 }
 
 export function evaluateStroke(user: Stroke, reference: Stroke, rawPoints?: Point[]): StrokeEvaluation {
@@ -472,14 +472,67 @@ export function evaluateStroke(user: Stroke, reference: Stroke, rawPoints?: Poin
   }
 }
 
+/** Pozycja punktu wzdłuż linii, w pikselach od jej początku. */
+function alongLine(p: Vec, line: Vec[], cumulative: number[]): number {
+  const nearest = nearestOnPolyline(p, line)
+  return cumulative[nearest.segmentIndex] + dist(line[nearest.segmentIndex], nearest.point)
+}
+
+function cumulativeLengths(line: Vec[]): number[] {
+  const out = [0]
+  for (let i = 1; i < line.length; i++) out.push(out[i - 1] + dist(line[i - 1], line[i]))
+  return out
+}
+
+/**
+ * Kilka kresek jednego kroku jako jedna linia do oceny: ułożone w kolejności wzdłuż wzoru,
+ * każda w kierunku wzoru, a czas sklejony bez przerw — oderwanie pędzla to nie zatrzymanie ręki.
+ */
+export function combineStepStrokes(parts: { stroke: Stroke; raw?: Point[] }[], reference: Stroke): { stroke: Stroke; raw: Point[] } {
+  const usable = parts.filter((part) => part.stroke.points.length >= 2)
+  if (usable.length === 0) return { stroke: parts[0]?.stroke ?? { ...reference, points: [] }, raw: [] }
+  if (usable.length === 1) return { stroke: usable[0].stroke, raw: usable[0].raw ?? usable[0].stroke.points }
+
+  const cumulative = cumulativeLengths(reference.points)
+  const oriented = usable.map(({ stroke, raw }) => {
+    const points = stroke.points
+    const a = alongLine(points[0], reference.points, cumulative)
+    const b = alongLine(points[points.length - 1], reference.points, cumulative)
+    const flip = <T extends Point>(list: T[]): T[] => {
+      const t0 = list[0].timestamp
+      const tN = list[list.length - 1].timestamp
+      return [...list].reverse().map((p) => ({ ...p, timestamp: t0 + (tN - p.timestamp) }))
+    }
+    const rawPoints = raw && raw.length >= 2 ? raw : points
+    return a <= b
+      ? { key: a, points, raw: rawPoints }
+      : { key: b, points: flip(points), raw: flip(rawPoints) }
+  })
+  oriented.sort((x, y) => x.key - y.key)
+
+  const points: Point[] = []
+  const raw: Point[] = []
+  let clock = 0
+  for (const part of oriented) {
+    const start = part.raw[0].timestamp
+    const offset = (raw.length ? clock + 16 : 0) - start
+    for (const p of part.raw) raw.push({ ...p, timestamp: p.timestamp + offset })
+    const pointOffset = (points.length ? clock + 16 : 0) - part.points[0].timestamp
+    for (const p of part.points) points.push({ ...p, timestamp: p.timestamp + pointOffset })
+    clock = raw[raw.length - 1].timestamp
+  }
+  return { stroke: { ...usable[0].stroke, points }, raw }
+}
+
 export type LiveProgress = {
   accuracy: number
   coverage: number
   tolerancePx: number
 }
 
-export function liveProgress(partial: Stroke, reference: Stroke): LiveProgress | null {
-  if (partial.points.length < 2 || reference.points.length < 2) return null
+export function liveProgress(drawn: Stroke | Stroke[], reference: Stroke): LiveProgress | null {
+  const lines = (Array.isArray(drawn) ? drawn : [drawn]).filter((stroke) => stroke.points.length >= 2)
+  if (lines.length === 0 || reference.points.length < 2) return null
 
   const refLength = pathLength(reference.points)
   const { good, bad } = offsetTolerance(reference, refLength)
@@ -491,18 +544,20 @@ export function liveProgress(partial: Stroke, reference: Stroke): LiveProgress |
   const total = cumulative[cumulative.length - 1]
 
   const covered = new Array<boolean>(COVERAGE_BINS).fill(false)
-  const step = Math.max(1, Math.floor(partial.points.length / 60))
   let sum = 0
   let count = 0
 
-  for (let i = 0; i < partial.points.length; i += step) {
-    const nearest = nearestOnPolyline(partial.points[i], reference.points)
-    sum += nearest.distance
-    count += 1
+  for (const line of lines) {
+    const step = Math.max(1, Math.floor(line.points.length / 60))
+    for (let i = 0; i < line.points.length; i += step) {
+      const nearest = nearestOnPolyline(line.points[i], reference.points)
+      sum += nearest.distance
+      count += 1
 
-    if (nearest.distance <= bad && total > 0) {
-      const along = cumulative[nearest.segmentIndex] + dist(reference.points[nearest.segmentIndex], nearest.point)
-      covered[Math.min(COVERAGE_BINS - 1, Math.floor((along / total) * COVERAGE_BINS))] = true
+      if (nearest.distance <= bad && total > 0) {
+        const along = cumulative[nearest.segmentIndex] + dist(reference.points[nearest.segmentIndex], nearest.point)
+        covered[Math.min(COVERAGE_BINS - 1, Math.floor((along / total) * COVERAGE_BINS))] = true
+      }
     }
   }
 

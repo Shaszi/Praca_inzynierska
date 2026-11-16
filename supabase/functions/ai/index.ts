@@ -31,7 +31,8 @@ type AiRequest =
       stepDescription: string
     }
   | { action: 'analyze-stroke'; stepTitle: string; metrics: StrokeMetrics }
-  | { action: 'plan-contours'; image: ImagePayload; overlay: ImagePayload; contours: ContourSummary[]; hasMask: boolean }
+  | { action: 'plan-contours'; image: ImagePayload; overlay: ImagePayload; contours: ContourSummary[]; hasMask: boolean; focus?: LabelFocus }
+  | { action: 'locate-parts'; image: ImagePayload }
 
 type StrokeSegment = {
   key: 'start' | 'middle' | 'end'
@@ -60,6 +61,7 @@ type ContourSummary = {
   len: number
   closed: boolean
   role: 'outline' | 'structure' | 'detail'
+  part?: string
 }
 
 class HttpError extends Error {
@@ -130,7 +132,7 @@ function assertMetrics(value: unknown): asserts value is StrokeMetrics {
   }
 }
 
-const MAX_CONTOURS_IN = 120
+const MAX_CONTOURS_IN = 250
 
 function assertContours(value: unknown): asserts value is ContourSummary[] {
   if (!Array.isArray(value) || value.length === 0 || value.length > MAX_CONTOURS_IN) {
@@ -143,6 +145,9 @@ function assertContours(value: unknown): asserts value is ContourSummary[] {
     if (typeof c?.closed !== 'boolean') throw new HttpError(400, 'Nieprawidłowe pole closed', 'invalid_input')
     if (!['outline', 'structure', 'detail'].includes(c?.role as string)) {
       throw new HttpError(400, 'Nieprawidłowe pole role', 'invalid_input')
+    }
+    if (c?.part !== undefined && (typeof c.part !== 'string' || c.part.length > 80)) {
+      throw new HttpError(400, 'Nieprawidłowe pole part', 'invalid_input')
     }
     if (!Array.isArray(c?.box) || c.box.length !== 4) {
       throw new HttpError(400, 'Nieprawidłowe pole box', 'invalid_input')
@@ -197,6 +202,13 @@ swój kolor i numer przy środku. Numer to numer kroku z listy poniżej. Zanim n
 znajdź jego numer na drugim obrazie i sprawdź, co ta linia naprawdę obrysowuje. Nie zgaduj
 po samej ramce.
 
+CZĘŚCI
+Każdy krok ma pole "part" — część obrazka, którą program już rozpoznał (np. „Oko — lewa
+strona”, „Kosmyki włosów”, „Linia szczęki i podbródek”). Nie zmieniaj przypisania do części.
+Tytuł ma mówić, CO w tej części rysujemy teraz: „Górna powieka”, „Kosmyk nad czołem”,
+„Kącik ust”, a nie powtarzać nazwę części. Kroki jednej części idą po sobie — nazwij je tak,
+żeby było widać, że to kolejne fragmenty tej samej rzeczy.
+
 ROLE KROKÓW
 - "outline": linia leży na obrysie obiektu (sylwetka, zewnętrzna krawędź).
 - "structure": długa linia wewnątrz obiektu, która buduje bryłę.
@@ -212,11 +224,80 @@ POLA
 TEKST
 Tytuł: 2-5 słów, nazwij rzecz po imieniu, patrząc na zdjęcie ("Linia ramienia", "Obrys
 głowy — lewa strona", a nie "Kontur 3"). Kolejne odcinki tej samej rzeczy rozróżnij
-(lewa/prawa, góra/dół). Opis: jedno zdanie, jak poprowadzić rękę, po polsku.`
+(lewa/prawa, góra/dół). Opis: jedno krótkie zdanie (do 12 słów), jak poprowadzić rękę, po polsku.`
 
 const MASK_NOTE = `
 UWAGA: użytkownik sam zaznaczył obiekt (stuknięciem albo lassem) i program wziął linie tylko
 z zaznaczenia. Wszystkie linie należą do obiektu — w każdym kroku ustaw "background": false.`
+
+const FACE_PART_KINDS = ['brow-left', 'brow-right', 'eye-left', 'eye-right', 'nose', 'mouth', 'hair-strands'] as const
+
+const LOCATE_PROMPT = `Na obrazie znajdź twarz głównego obiektu: człowieka, zwierzęcia, postaci z rysunku,
+komiksu albo kreskówki, rzeźby. Dla każdej widocznej części podaj prostokąt we współrzędnych
+0–1 względem szerokości i wysokości obrazu (x0,y0 — lewy górny róg, x1,y1 — prawy dolny).
+Części: eye-left i eye-right (oko po lewej / prawej stronie OBRAZU, prostokąt obejmuje całe oko
+z powiekami i rzęsami), brow-left, brow-right, nose, mouth, hair-strands (cała fryzura albo
+sierść na głowie). Pomiń części niewidoczne. Jeśli na obrazie nie ma żadnej twarzy, zwróć
+pustą listę "parts".`
+
+const LOCATE_SCHEMA = {
+  type: 'object',
+  properties: {
+    parts: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          kind: { type: 'string', enum: [...FACE_PART_KINDS] },
+          x0: { type: 'number' },
+          y0: { type: 'number' },
+          x1: { type: 'number' },
+          y1: { type: 'number' },
+        },
+        required: ['kind', 'x0', 'y0', 'x1', 'y1'],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ['parts'],
+  additionalProperties: false,
+}
+
+type LocatedPart = { kind: (typeof FACE_PART_KINDS)[number]; x0: number; y0: number; x1: number; y1: number }
+
+const unit = (n: unknown) => Math.min(1, Math.max(0, Number(n)))
+
+function parseLocatedParts(message: Anthropic.Message): LocatedPart[] {
+  assertNotRefused(message)
+  const { parts } = JSON.parse(textOf(message)) as { parts?: LocatedPart[] }
+  const seen = new Set<string>()
+  return (Array.isArray(parts) ? parts : []).flatMap((part) => {
+    if (!(FACE_PART_KINDS as readonly string[]).includes(part?.kind) || seen.has(part.kind)) return []
+    const box = { x0: unit(part.x0), y0: unit(part.y0), x1: unit(part.x1), y1: unit(part.y1) }
+    if (![box.x0, box.y0, box.x1, box.y1].every(Number.isFinite) || box.x1 <= box.x0 || box.y1 <= box.y0) return []
+    seen.add(part.kind)
+    return [{ kind: part.kind, ...box }]
+  })
+}
+
+type LabelFocus = 'eyes' | 'face' | 'hair'
+
+const FOCUS_ZOOM = `
+ZBLIŻENIE: oba obrazy to powiększony fragment zdjęcia, a ramki "box" są liczone względem
+tego fragmentu. Wszystkie linie należą do obiektu — w każdym kroku ustaw "background": false.`
+
+const FOCUS_NOTES: Record<LabelFocus, string> = {
+  eyes: `${FOCUS_ZOOM}
+Na fragmencie są OCZY I BRWI. Każda linia to część oka albo brwi — nazwij ją dokładnie:
+górna lub dolna powieka, załamanie powieki, tęczówka, źrenica, kącik oka, rzęsy, łuk brwi.
+Zawsze podaj stronę (lewe/prawe oko na zdjęciu). Opisz, jak delikatnie poprowadzić kreskę.`,
+  face: `${FOCUS_ZOOM}
+Na fragmencie jest TWARZ (bez oczu — te są w osobnym kursie). Nazywaj: owal i podbródek,
+linia czoła, grzbiet nosa, skrzydełka i nozdrza, górna i dolna warga, kąciki ust.`,
+  hair: `${FOCUS_ZOOM}
+Na fragmencie są WŁOSY. Nazywaj: zarys fryzury, przedziałek, kosmyki — rozróżniaj je
+położeniem (nad czołem, przy skroni, na czubku, za uchem) i kierunkiem, w którym opadają.`,
+}
 
 const CONTOUR_LABEL_SCHEMA = {
   type: 'object',
@@ -245,10 +326,9 @@ type ContourLabel = { i: number; title: string; description: string; background:
 
 function parseContourLabels(message: Anthropic.Message, available: number[]): ContourLabel[] {
   assertNotRefused(message)
-  if (message.stop_reason === 'max_tokens') {
-    throw new HttpError(502, 'Opis kroków okazał się za długi. Spróbuj jeszcze raz.', 'truncated')
-  }
-  const { labels } = JSON.parse(textOf(message)) as { labels: ContourLabel[] }
+  const labels = message.stop_reason === 'max_tokens'
+    ? completeLabels(textOf(message))
+    : (JSON.parse(textOf(message)) as { labels: ContourLabel[] }).labels
   const left = new Set(available)
   return (Array.isArray(labels) ? labels : [])
     .filter((label) => typeof label?.i === 'number' && left.delete(label.i))
@@ -260,10 +340,25 @@ function parseContourLabels(message: Anthropic.Message, available: number[]): Co
     }))
 }
 
+// Ucięta odpowiedź nie jest poprawnym JSON-em, ale pełne obiekty przed cięciem są —
+// brakujące kroki dostaną u klienta nazwę po roli.
+function completeLabels(text: string): ContourLabel[] {
+  const labels: ContourLabel[] = []
+  for (const match of text.matchAll(/\{[^{}]*\}/g)) {
+    try {
+      labels.push(JSON.parse(match[0]) as ContourLabel)
+    } catch {
+      // obiekt urwany w połowie
+    }
+  }
+  return labels
+}
+
 function imageStepPrompt(title: string, description: string): string {
   return `Pierwsze zdjęcie: wzorzec (oryginalne zdjęcie).
-Drugie zdjęcie: rysunek użytkownika. Czarna kreska to ta z tego kroku i tylko ją oceniasz;
-szare kreski to wcześniejsze kroki — są kontekstem, nie przedmiotem oceny. Rysunek jest
+Drugie zdjęcie: rysunek użytkownika. Czarne kreski to ten krok — może być kilka pociągnięć,
+którymi użytkownik dorysowuje tę samą linię; oceniaj je razem jako jedną linię, a nie każde osobno.
+Szare kreski to wcześniejsze kroki — są kontekstem, nie przedmiotem oceny. Rysunek jest
 dopasowany do kadru, więc nie oceniaj jego położenia ani wielkości względem wzorca.
 Krok: "${title}"
 Opis kroku: "${description}"
@@ -350,12 +445,16 @@ async function handle(client: Anthropic, body: AiRequest): Promise<unknown> {
       assertImagePayload(body.image, 'image')
       assertImagePayload(body.overlay, 'overlay')
       assertContours(body.contours)
+      if (body.focus !== undefined && !Object.hasOwn(FOCUS_NOTES, body.focus as string)) {
+        throw new HttpError(400, 'Nieprawidłowe pole focus', 'invalid_input')
+      }
+      const note = body.focus ? FOCUS_NOTES[body.focus] : body.hasMask === true ? MASK_NOTE : ''
       const list = body.contours
-        .map((c) => `${c.i}: role=${c.role} box=[${c.box.map((n) => n.toFixed(2)).join(', ')}] len=${c.len.toFixed(3)} closed=${c.closed}`)
+        .map((c) => `${c.i}: part="${c.part ?? ''}" role=${c.role} box=[${c.box.map((n) => n.toFixed(2)).join(', ')}] len=${c.len.toFixed(3)} closed=${c.closed}`)
         .join(String.fromCharCode(10))
       const message = await client.messages.create({
         model: MODEL,
-        max_tokens: 6000,
+        max_tokens: 16000,
         thinking: NO_THINKING,
         output_config: { format: { type: 'json_schema', schema: CONTOUR_LABEL_SCHEMA } },
         messages: [{
@@ -363,11 +462,29 @@ async function handle(client: Anthropic, body: AiRequest): Promise<unknown> {
           content: [
             { type: 'image', source: { type: 'base64', media_type: body.image.mediaType, data: body.image.data } },
             { type: 'image', source: { type: 'base64', media_type: body.overlay.mediaType, data: body.overlay.data } },
-            { type: 'text', text: CONTOUR_LABEL_PROMPT + (body.hasMask === true ? MASK_NOTE : '') + String.fromCharCode(10, 10) + 'KROKI (w kolejności rysowania):' + String.fromCharCode(10) + list },
+            { type: 'text', text: CONTOUR_LABEL_PROMPT + note + String.fromCharCode(10, 10) + 'KROKI (w kolejności rysowania):' + String.fromCharCode(10) + list },
           ],
         }],
       })
       return { labels: parseContourLabels(message, body.contours.map((c) => c.i)) }
+    }
+
+    case 'locate-parts': {
+      assertImagePayload(body.image, 'image')
+      const message = await client.messages.create({
+        model: MODEL,
+        max_tokens: 1000,
+        thinking: NO_THINKING,
+        output_config: { format: { type: 'json_schema', schema: LOCATE_SCHEMA } },
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type: body.image.mediaType, data: body.image.data } },
+            { type: 'text', text: LOCATE_PROMPT },
+          ],
+        }],
+      })
+      return { parts: message.stop_reason === 'max_tokens' ? [] : parseLocatedParts(message) }
     }
 
     case 'analyze-stroke': {

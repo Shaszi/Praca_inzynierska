@@ -11,6 +11,8 @@ import { ImageProjectList } from '../features/practice/components/image/ImagePro
 import { ImageAnalyzingScreen, ImageDoneScreen } from '../features/practice/components/image/ImageStatusScreens'
 import { PhotoDropzone } from '../features/practice/components/image/PhotoDropzone'
 import { StepCard } from '../features/practice/components/image/StepCard'
+import { PartLayersPanel } from '../features/practice/components/image/PartLayersPanel'
+import { partLayers, type PartView } from '../features/practice/parts/partLayers'
 import { ACCEPTED_TYPES, readFileAsBase64, readPixels, type LoadedPhoto } from '../features/practice/utils/photoFile'
 import { StrokeMeter } from '../features/practice/components/StrokeMeter'
 import { SubjectPicker } from '../features/practice/components/SubjectPicker'
@@ -22,7 +24,6 @@ import { useSmoothingSettings } from '../features/canvas/hooks/useSmoothingSetti
 import { usePracticeSession } from '../features/progress/hooks/usePracticeSession'
 import { photoService, downscaleToJpeg } from '../features/progress/services/photoService'
 import { progressService } from '../features/progress/services/progressService'
-import { useSingleLayer } from '../features/canvas/hooks/useLayers'
 import { useStrokes } from '../hooks/useStrokes'
 import {
   analyzeStrokeAgainstImage,
@@ -34,6 +35,10 @@ import {
 import { describeAiError } from '../services/aiClient'
 import type { Point, Stroke, Tool } from '../types/drawing'
 import { eraseAtPoint } from '../utils/eraser'
+import { useAppSettings } from '../features/settings/useAppSettings'
+import type { CanvasControls } from '../features/canvas/hooks/useCanvas'
+import { TouchGestureHint } from '../features/practice/components/TouchGestureHint'
+import { pathLength } from '../features/practice/contours'
 
 type Phase = 'upload' | 'select' | 'analyzing' | 'practicing' | 'done'
 
@@ -51,13 +56,16 @@ export function ImagePracticePage() {
 
   const { brush, setBrush } = useBrushSettings()
   const [isBrushOpen, setIsBrushOpen] = useState(false)
+  const [isLayersOpen, setIsLayersOpen] = useState(false)
+  const [partViews, setPartViews] = useState<Record<string, PartView>>({})
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [tool, setTool] = useState<Tool>('brush')
   const { smoothing } = useSmoothingSettings()
+  const { settings } = useAppSettings()
+  const canvasControls = useRef<CanvasControls | null>(null)
   const colors = useCanvasColors()
   const [isAnalyzingAI, setIsAnalyzingAI] = useState(false)
   const [aiFeedback, setAiFeedback] = useState<string | null>(null)
-  const [awaitingNext, setAwaitingNext] = useState(false)
   const attemptRef = useRef(0)
   const [photoPath, setPhotoPath] = useState<string | null>(null)
   const [resumedSessionId, setResumedSessionId] = useState<string | null>(null)
@@ -67,7 +75,6 @@ export function ImagePracticePage() {
     strokes, addStroke, undoStroke, redoStroke, clearStrokes, replaceStrokes,
     beginEraseSession, eraseInSession, endEraseSession, canUndo, canRedo,
   } = useStrokes()
-  const canvasLayers = useSingleLayer(strokes)
 
   const sessionParams = useMemo(
     () =>
@@ -159,7 +166,7 @@ export function ImagePracticePage() {
     setAnalyzeError(null)
     setPhase('analyzing')
     try {
-      const generatedSteps = await buildContourCourse(pixels, width, height, imageBase64, mediaType, mask)
+      const generatedSteps = await buildContourCourse(pixels, width, height, imageBase64, mediaType, image, mask)
       const stored = await photoService.upload(await downscaleToJpeg(image)).catch(() => null)
       setPhotoPath(stored)
       setResumedSessionId(null)
@@ -174,13 +181,16 @@ export function ImagePracticePage() {
 
 
   const currentStep = steps[stepIndex] ?? null
+  const canvasLayers = useMemo(() => partLayers(strokes, steps, partViews), [strokes, steps, partViews])
   const fitBounds = useMemo(
     () => (imageSize ? { minX: 0, minY: 0, maxX: imageSize.width, maxY: imageSize.height } : null),
     [imageSize],
   )
   const guideStroke = currentStep?.strokes[0] ?? null
-  const { evaluation, live, analyzeActiveStroke, evaluateCompletedStroke, resetAnalysis } =
-    usePracticeAnalysis(guideStroke)
+  const stepStrokes = useMemo(() => strokes.filter((stroke) => stroke.stepIndex === stepIndex), [strokes, stepIndex])
+  const { evaluation, live, stepProgress, analyzeActiveStroke, evaluateWithStroke, resetLive } =
+    usePracticeAnalysis(guideStroke, stepStrokes)
+  const awaitingNext = Boolean(evaluation && !evaluation.tooShort)
 
   const handleEraseAtPoint = useCallback(
     (point: Point) => { eraseInSession((prev) => eraseAtPoint(prev, point.x, point.y, brush.width)) },
@@ -188,34 +198,35 @@ export function ImagePracticePage() {
   )
 
   const handleStrokeComplete = useCallback(async (stroke: Stroke, rawPoints: Point[]) => {
-    addStroke(stroke)
+    // Stuknięcie bez ruchu nie jest kreską — nie trafia na płótno ani do oceny.
+    if (stroke.points.length < 2 || pathLength(stroke.points) < 6) return
+    const tagged = { ...stroke, stepIndex }
+    addStroke(tagged)
     if (!currentStep) return
-    const result = evaluateCompletedStroke(stroke, rawPoints)
-    if (result?.tooShort) {
-      undoStroke()
-      return
-    }
-    setAwaitingNext(true)
+    const result = evaluateWithStroke(tagged, rawPoints)
+    if (!result || result.evaluation.tooShort) return
+
     setIsAnalyzingAI(true)
-    setAiFeedback(null)
     const attempt = ++attemptRef.current
     let feedback: string | null = null
     try {
       feedback = await analyzeStrokeAgainstImage(
-        strokes, stroke, imageBase64, mediaType, currentStep.title, currentStep.description,
+        strokes.filter((item) => item.stepIndex !== stepIndex),
+        [...stepStrokes, tagged],
+        imageBase64, mediaType, currentStep.title, currentStep.description,
       )
       if (attemptRef.current === attempt) setAiFeedback(feedback)
     } finally {
       if (attemptRef.current === attempt) setIsAnalyzingAI(false)
       recordAttempt({
         stepIndex,
-        stroke,
-        score: result && !result.tooShort ? result.score : null,
-        feedback: result && !result.tooShort ? result.summary : null,
+        stroke: result.stroke,
+        score: result.evaluation.score,
+        feedback: result.evaluation.summary,
         aiFeedback: feedback,
       })
     }
-  }, [addStroke, currentStep, evaluateCompletedStroke, undoStroke, strokes, imageBase64, mediaType, recordAttempt, stepIndex])
+  }, [addStroke, currentStep, evaluateWithStroke, strokes, stepStrokes, imageBase64, mediaType, recordAttempt, stepIndex])
 
   const handleNextStep = useCallback(() => {
     if (stepIndex >= steps.length - 1) { setPhase('done'); completeSession(strokes); return }
@@ -223,27 +234,28 @@ export function ImagePracticePage() {
     saveProgress(stepIndex + 1, strokes)
     setStepIndex((i) => i + 1)
     setAiFeedback(null)
-    setAwaitingNext(false)
     setIsAnalyzingAI(false)
-    resetAnalysis()
-  }, [stepIndex, steps.length, completeSession, resetAnalysis, saveProgress, strokes])
+    resetLive()
+  }, [stepIndex, steps.length, completeSession, resetLive, saveProgress, strokes])
 
   const handleRetry = useCallback(() => {
     attemptRef.current++
-    undoStroke(); setAiFeedback(null); setAwaitingNext(false); setIsAnalyzingAI(false); resetAnalysis()
-  }, [resetAnalysis, undoStroke])
+    replaceStrokes(strokes.filter((stroke) => stroke.stepIndex !== stepIndex))
+    setAiFeedback(null); setIsAnalyzingAI(false); resetLive()
+  }, [replaceStrokes, resetLive, stepIndex, strokes])
 
   const handleUndo = useCallback(() => {
-    undoStroke(); setAiFeedback(null); setAwaitingNext(false)
+    attemptRef.current++
+    undoStroke(); setAiFeedback(null); setIsAnalyzingAI(false)
   }, [undoStroke])
 
   const handleClear = useCallback(() => {
-    clearStrokes(); setAiFeedback(null); setAwaitingNext(false); setIsAnalyzingAI(false); setStepIndex(0); resetSession()
+    clearStrokes(); setAiFeedback(null); setIsAnalyzingAI(false); setStepIndex(0); resetSession()
   }, [clearStrokes, resetSession])
 
   const resetAll = useCallback(() => {
     setPhase('upload'); setImageUrl(null); setImageBase64(''); setSteps([]); setImageSize(null); setLoadedPhoto(null)
-    clearStrokes(); setAiFeedback(null); setAwaitingNext(false); setStepIndex(0); resetSession()
+    clearStrokes(); setAiFeedback(null); setStepIndex(0); resetSession()
   }, [clearStrokes, resetSession])
 
   useEffect(() => {
@@ -294,7 +306,7 @@ export function ImagePracticePage() {
   }
 
   const canProceed = awaitingNext
-  const canRetry = awaitingNext && canUndo
+  const canRetry = stepStrokes.length > 0
   const isLastStep = stepIndex >= steps.length - 1
 
   return (
@@ -332,11 +344,18 @@ export function ImagePracticePage() {
               stepsTotal={steps.length}
               stepNoun="Krok"
               onOpenBrush={() => setIsBrushOpen((open) => !open)}
+              isLayersOpen={isLayersOpen}
+              onToggleLayers={() => {
+                setIsLayersOpen((open) => !open)
+                setIsBrushOpen(false)
+              }}
               isBrushOpen={isBrushOpen}
               brushColor={brush.color}
               onUndo={handleUndo}
               onRedo={redoStroke}
               onClear={handleClear}
+              onRotate={(degrees) => canvasControls.current?.rotateBy(degrees)}
+              onResetRotation={() => canvasControls.current?.resetRotation()}
               canUndo={canUndo}
               canRedo={canRedo}
               isFullscreen={isFullscreen}
@@ -349,21 +368,38 @@ export function ImagePracticePage() {
             )}
           </div>
 
+          <TouchGestureHint />
+
           {guideStroke && (
             <StrokeMeter
               live={live}
-              finalCoverage={awaitingNext && evaluation && !evaluation.tooShort ? evaluation.lengthRatio * 100 : null}
+              finalCoverage={stepProgress?.coverage ?? null}
             />
           )}
 
           </>
         }
         canvas={
-          <div className="relative min-h-[420px] min-w-0 flex-1">
+          <div className="relative flex min-h-[420px] flex-1 gap-3.5">
+            {isLayersOpen && (
+              <PartLayersPanel
+                layers={canvasLayers}
+                currentPartId={currentStep?.part?.id ?? null}
+                onChange={(partId, view) => setPartViews((views) => ({ ...views, [partId]: view }))}
+              />
+            )}
+            <div className="relative min-w-0 flex-1">
             <DrawingCanvas
               layers={canvasLayers}
               referenceStrokes={currentStep?.strokes ?? []}
               fitBounds={fitBounds}
+              followGuide={settings.followGuide}
+              penOnly={settings.penOnly}
+              allowRotation={settings.rotateGesture}
+              guideOpacity={settings.guideOpacity}
+              onUndoGesture={settings.tapGestures ? handleUndo : undefined}
+              onRedoGesture={settings.tapGestures ? redoStroke : undefined}
+              controlsRef={canvasControls}
               backgroundImageSize={imageSize}
               brushSize={brush.width}
               brushOpacity={brush.opacity}
@@ -380,6 +416,7 @@ export function ImagePracticePage() {
               backgroundImageUrl={imageUrl ?? undefined}
             />
             {canProceed && <NextStepButton isLast={isLastStep} label="Następny krok" onClick={handleNextStep} />}
+            </div>
           </div>
         }
         panel={

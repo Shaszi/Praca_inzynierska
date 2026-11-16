@@ -54,7 +54,7 @@ describe('planCourse', () => {
   })
 
   it('odrzuca najkrótsze linie wewnątrz — fakturę i cienie', () => {
-    const plan = planCourse([line(20, 20, 79, 20), line(50, 50, 52, 50, 4)], 100, 100, squareMask())
+    const plan = planCourse([line(20, 20, 79, 20), line(50, 50, 51, 50, 2)], 100, 100, squareMask())
     expect(plan).toHaveLength(1)
     expect(pathLength(plan[0].points)).toBeGreaterThan(50)
   })

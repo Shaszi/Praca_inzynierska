@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Point, Stroke } from '../../../types/drawing'
-import { evaluateStroke, liveProgress } from './strokeEvaluation'
+import { combineStepStrokes, evaluateStroke, liveProgress } from './strokeEvaluation'
 
 const reference: Stroke = {
   brushSize: 5,
@@ -155,5 +155,49 @@ describe('liveProgress', () => {
     const thin = liveProgress(asStroke(drawn(() => 300, { to: 0.5 })), reference)!.tolerancePx
     const thick = liveProgress(asStroke(drawn(() => 300, { to: 0.5 })), { ...reference, brushSize: 40 })!.tolerancePx
     expect(thick).toBeGreaterThan(thin)
+  })
+})
+
+describe('combineStepStrokes', () => {
+  const later = (points: Point[], ms: number) => points.map((p) => ({ ...p, timestamp: p.timestamp + ms }))
+  const firstHalf = drawn(() => 300, { from: 0, to: 0.5 })
+  const secondHalf = later(drawn(() => 300, { from: 0.5, to: 1 }), 5000)
+
+  const evaluate = (parts: Point[][]) => {
+    const combined = combineStepStrokes(parts.map((raw) => ({ stroke: asStroke(raw), raw })), reference)
+    return evaluateStroke(combined.stroke, reference, combined.raw)
+  }
+
+  it('linia narysowana na dwa razy liczy się jak cała linia', () => {
+    const half = evaluate([firstHalf])
+    const both = evaluate([firstHalf, secondHalf])
+    expect(half.lengthRatio).toBeLessThan(0.6)
+    expect(both.lengthRatio).toBeGreaterThan(0.9)
+    expect(both.score).toBeGreaterThan(half.score)
+  })
+
+  it('kolejność rysowania nie ma znaczenia — kreski układają się wzdłuż wzoru', () => {
+    expect(evaluate([secondHalf, firstHalf]).lengthRatio).toBeCloseTo(evaluate([firstHalf, secondHalf]).lengthRatio, 2)
+  })
+
+  it('oderwanie pędzla między kreskami nie jest zatrzymaniem ręki', () => {
+    const both = evaluate([firstHalf, secondHalf])
+    expect(both.segments.every((segment) => segment.pauses === 0)).toBe(true)
+  })
+
+  it('druga kreska narysowana od końca jest odwracana w kierunek wzoru', () => {
+    const backwards = later([...secondHalf].reverse().map((p, i) => ({ ...p, timestamp: 9000 + i * 5 })), 0)
+    expect(evaluate([firstHalf, backwards]).lengthRatio).toBeGreaterThan(0.9)
+  })
+})
+
+describe('liveProgress dla kilku kresek', () => {
+  it('pokrycie się sumuje, a nie zaczyna od zera po oderwaniu pędzla', () => {
+    const first = asStroke(drawn(() => 300, { from: 0, to: 0.5 }))
+    const second = asStroke(drawn(() => 300, { from: 0.5, to: 1 }))
+    const one = liveProgress(first, reference)!.coverage
+    const two = liveProgress([first, second], reference)!.coverage
+    expect(one).toBeLessThan(60)
+    expect(two).toBeGreaterThan(95)
   })
 })

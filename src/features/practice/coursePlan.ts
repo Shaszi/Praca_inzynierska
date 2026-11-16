@@ -4,10 +4,11 @@ import type { SubjectMask } from './subjectMask'
 export type ContourRole = 'outline' | 'structure' | 'detail'
 export type PlannedContour = { points: ContourPoint[]; role: ContourRole }
 
-const MIN_DETAIL = 0.025
+const MIN_DETAIL = 0.01
 const STRUCTURE = 0.07
 const OUTLINE_SHARE = 0.6
-const MAX_STEPS = 45
+const MAX_STEPS = 90
+const DETAIL_SLOTS = 35
 
 export function nearBoundary(mask: SubjectMask, radius: number): Uint8Array {
   const { data, width, height } = mask
@@ -78,7 +79,7 @@ function startNear(points: ContourPoint[], pen: ContourPoint): { points: Contour
   return head <= tail ? { points, gap: head } : { points: [...points].reverse(), gap: tail }
 }
 
-function chain(contours: ContourPoint[][], pen: ContourPoint): { ordered: ContourPoint[][]; pen: ContourPoint } {
+export function chain(contours: ContourPoint[][], pen: ContourPoint): { ordered: ContourPoint[][]; pen: ContourPoint } {
   const left = [...contours]
   const ordered: ContourPoint[][] = []
   while (left.length > 0) {
@@ -112,8 +113,13 @@ export function planCourse(
       .sort((a, b) => pathLength(b) - pathLength(a))
 
   const outline = byRole('outline')
-  const structure = byRole('structure')
-  const detail = byRole('detail').slice(0, Math.max(0, MAX_STEPS - outline.length - structure.length))
+  // Małe zamknięte kształty (oko, tęczówka, nozdrze) przed zwykłymi detalami tej samej długości.
+  const details = byRole('detail').sort(
+    (a, b) => pathLength(b) * (isClosed(b) ? 2 : 1) - pathLength(a) * (isClosed(a) ? 2 : 1),
+  )
+  const structureSlots = Math.max(0, MAX_STEPS - outline.length - Math.min(details.length, DETAIL_SLOTS))
+  const structure = byRole('structure').slice(0, structureSlots)
+  const detail = details.slice(0, Math.max(0, MAX_STEPS - outline.length - structure.length))
 
   const all = [...outline, ...structure, ...detail]
   if (all.length === 0) return []

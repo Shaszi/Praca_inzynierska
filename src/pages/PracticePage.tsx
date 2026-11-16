@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Button, PageHeader } from '../components/ui'
 import { DebugPanel } from '../components/DebugPanel'
 import { FeedbackPanel } from '../components/FeedbackPanel'
@@ -23,6 +23,10 @@ import { PRACTICE_LAYER_ID, useLayers } from '../features/canvas/hooks/useLayers
 import { strokesBounds } from '../features/canvas/utils/canvasPoint'
 import type { Point, ReferenceDrawing, Stroke, Tool } from '../types/drawing'
 import { eraseAtPoint } from '../utils/eraser'
+import { useAppSettings } from '../features/settings/useAppSettings'
+import type { CanvasControls } from '../features/canvas/hooks/useCanvas'
+import { TouchGestureHint } from '../features/practice/components/TouchGestureHint'
+import { pathLength } from '../features/practice/contours'
 
 export function PracticePage() {
   const {
@@ -53,10 +57,12 @@ export function PracticePage() {
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [lockedWarning, setLockedWarning] = useState<string | null>(null)
   const [isAnalysing, setIsAnalysing] = useState(false)
-  const [guideOpacity, setGuideOpacity] = useState(1)
 
   const [tool, setTool] = useState<Tool>('brush')
   const { smoothing } = useSmoothingSettings()
+  const { settings } = useAppSettings()
+  const [guideOpacity, setGuideOpacity] = useState(settings.guideOpacity)
+  const canvasControls = useRef<CanvasControls | null>(null)
 
   useEffect(() => {
     if (!isFullscreen) return
@@ -74,7 +80,6 @@ export function PracticePage() {
   }, [isAnalysing])
 
   const [currentGuideStrokeIndex, setCurrentGuideStrokeIndex] = useState(0)
-  const [awaitingNext, setAwaitingNext] = useState(false)
   const [isBrushOpen, setIsBrushOpen] = useState(false)
   const { brush, setBrush } = useBrushSettings()
   const [isCompleted, setIsCompleted] = useState(false)
@@ -102,8 +107,16 @@ export function PracticePage() {
 
   const fitBounds = useMemo(() => strokesBounds(allReferenceStrokes), [allReferenceStrokes])
 
-  const { evaluation, live, analyzeActiveStroke, evaluateCompletedStroke, resetAnalysis } =
-    usePracticeAnalysis(currentReferenceStroke)
+  const stepStrokes = useMemo(
+    () =>
+      (layers.find((layer) => layer.id === PRACTICE_LAYER_ID)?.strokes ?? []).filter(
+        (stroke) => stroke.stepIndex === currentGuideStrokeIndex,
+      ),
+    [layers, currentGuideStrokeIndex],
+  )
+  const { evaluation, live, stepProgress, analyzeActiveStroke, evaluateWithStroke, resetLive } =
+    usePracticeAnalysis(currentReferenceStroke, stepStrokes)
+  const awaitingNext = Boolean(evaluation && !evaluation.tooShort)
   const {
     comment: aiComment,
     isPending: isAiPending,
@@ -156,13 +169,14 @@ export function PracticePage() {
         return
       }
 
-      const result = evaluateCompletedStroke(stroke, rawPoints)
-      if (result?.tooShort) return
+      if (stroke.points.length < 2 || pathLength(stroke.points) < 6) return
       const step = currentGuideStrokeIndex
-      addStroke({ ...stroke, stepIndex: step })
-      if (!result) return
+      const tagged = { ...stroke, stepIndex: step }
+      addStroke(tagged)
+      const combined = evaluateWithStroke(tagged, rawPoints)
+      if (!combined || combined.evaluation.tooShort) return
+      const result = combined.evaluation
 
-      setAwaitingNext(true)
       setIsAnalysing(true)
       const metrics = {
         level: result.level,
@@ -185,7 +199,7 @@ export function PracticePage() {
       requestAiComment(`${selectedReference?.name ?? 'Wzorzec'} — kreska ${step + 1} z ${totalStrokes}`, result, (aiFeedback) => {
         recordAttempt({
           stepIndex: step,
-          stroke,
+          stroke: combined.stroke,
           score: result.score,
           feedback: result.summary,
           aiFeedback,
@@ -196,7 +210,7 @@ export function PracticePage() {
     [
       activeLayer,
       addStroke,
-      evaluateCompletedStroke,
+      evaluateWithStroke,
       currentGuideStrokeIndex,
       recordAttempt,
       requestAiComment,
@@ -209,22 +223,19 @@ export function PracticePage() {
     resetAiComment()
     if (currentGuideStrokeIndex >= totalStrokes - 1) {
       setIsCompleted(true)
-      setAwaitingNext(false)
       completeSession(flatStrokes)
       return
     }
     setCurrentGuideStrokeIndex((i) => i + 1)
-    setAwaitingNext(false)
-    resetAnalysis()
-  }, [currentGuideStrokeIndex, totalStrokes, resetAnalysis, resetAiComment, completeSession, flatStrokes])
+    resetLive()
+  }, [currentGuideStrokeIndex, totalStrokes, resetLive, resetAiComment, completeSession, flatStrokes])
 
   const handleRetryStroke = useCallback(() => {
     removeStrokesForStep(currentGuideStrokeIndex)
     discardAttempt(currentGuideStrokeIndex)
-    setAwaitingNext(false)
-    resetAnalysis()
+    resetLive()
     resetAiComment()
-  }, [currentGuideStrokeIndex, discardAttempt, removeStrokesForStep, resetAnalysis, resetAiComment])
+  }, [currentGuideStrokeIndex, discardAttempt, removeStrokesForStep, resetLive, resetAiComment])
 
   const handlePickReference = useCallback(
     (id: string) => {
@@ -234,10 +245,10 @@ export function PracticePage() {
     [setSelectedReferenceId],
   )
 
-  const canStepBack = currentGuideStrokeIndex > 0 || awaitingNext
+  const canStepBack = currentGuideStrokeIndex > 0 || stepStrokes.length > 0
 
   const handleStepBack = useCallback(() => {
-    if (awaitingNext) {
+    if (stepStrokes.length > 0) {
       handleRetryStroke()
       return
     }
@@ -246,50 +257,46 @@ export function PracticePage() {
     setCurrentGuideStrokeIndex(target)
     removeStrokesForStep(target)
     discardAttempt(target)
-    setAwaitingNext(false)
     setIsCompleted(false)
-    resetAnalysis()
+    resetLive()
     resetAiComment()
   }, [
-    awaitingNext,
     currentGuideStrokeIndex,
     discardAttempt,
     handleRetryStroke,
+    stepStrokes.length,
     removeStrokesForStep,
-    resetAnalysis,
+    resetLive,
     resetAiComment,
   ])
 
   const handleUndo = useCallback(() => {
     undoStroke()
-    setAwaitingNext(false)
-    resetAnalysis()
+    resetLive()
     resetAiComment()
-  }, [undoStroke, resetAnalysis, resetAiComment])
+  }, [undoStroke, resetLive, resetAiComment])
 
   const handleClear = useCallback(() => {
     clearLayers()
-    setAwaitingNext(false)
     setCurrentGuideStrokeIndex(0)
     setIsCompleted(false)
-    resetAnalysis()
+    resetLive()
     resetAiComment()
     resetSession()
-  }, [clearLayers, resetAnalysis, resetAiComment, resetSession])
+  }, [clearLayers, resetLive, resetAiComment, resetSession])
 
   const handleRedo = useCallback(() => {
     redoStroke()
-    resetAnalysis()
-  }, [redoStroke, resetAnalysis])
+    resetLive()
+  }, [redoStroke, resetLive])
 
   useEffect(() => {
     setCurrentGuideStrokeIndex(0)
-    setAwaitingNext(false)
     setIsCompleted(false)
-    resetAnalysis()
+    resetLive()
     resetAiComment()
     resetSession()
-  }, [activeGuide?.id, resetAnalysis, resetAiComment, resetSession])
+  }, [activeGuide?.id, resetLive, resetAiComment, resetSession])
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -346,6 +353,8 @@ export function PracticePage() {
               onUndo={handleUndo}
               onRedo={handleRedo}
               onClear={handleClear}
+              onRotate={(degrees) => canvasControls.current?.rotateBy(degrees)}
+              onResetRotation={() => canvasControls.current?.resetRotation()}
               canUndo={canUndo}
               canRedo={canRedo}
               isFullscreen={isFullscreen}
@@ -358,10 +367,12 @@ export function PracticePage() {
             )}
           </div>
 
+          <TouchGestureHint />
+
           {currentReferenceStroke ? (
             <StrokeMeter
               live={live}
-              finalCoverage={awaitingNext && evaluation && !evaluation.tooShort ? evaluation.lengthRatio * 100 : null}
+              finalCoverage={stepProgress?.coverage ?? null}
             />
           ) : null}
 
@@ -402,6 +413,13 @@ export function PracticePage() {
               onEraseEnd={endEraseSession}
               errorMarker={awaitingNext ? evaluation?.worstPoint : null}
               fitBounds={fitBounds}
+              followGuide={settings.followGuide}
+              penOnly={settings.penOnly}
+              allowRotation={settings.rotateGesture}
+              guideOpacity={guideOpacity}
+              onUndoGesture={settings.tapGestures ? handleUndo : undefined}
+              onRedoGesture={settings.tapGestures ? handleRedo : undefined}
+              controlsRef={canvasControls}
             />
             {awaitingNext && (
               <NextStepButton
@@ -425,7 +443,7 @@ export function PracticePage() {
             live={live}
             isAnalysing={isAnalysing}
             canProceed={awaitingNext}
-            canRetry={awaitingNext}
+            canRetry={stepStrokes.length > 0}
             isLastStroke={currentGuideStrokeIndex >= totalStrokes - 1}
             onNextStroke={handleNextStroke}
             onRetry={handleRetryStroke}

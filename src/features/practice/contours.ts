@@ -16,10 +16,14 @@ const DEFAULTS: Required<Omit<ContourOptions, 'minGapPx' | 'keep'>> = {
   edgeQuantile: 0.45,
   minLengthPx: 40,
   simplifyEpsilonPx: 1.6,
-  maxContours: 120,
+  maxContours: 200,
 }
 
 const NOISE_FLOOR = 18
+
+// Z zaznaczeniem tło jest już wycięte, a sztuczny obrys podbija rozkład gradientu —
+// przy 0.45 odpadały delikatne krawędzie w środku obiektu (oko na tle skóry).
+export const SELECTION_EDGE_QUANTILE = 0.2
 
 export function toGrayscale(rgba: Uint8ClampedArray, width: number, height: number): Float32Array {
   const gray = new Float32Array(width * height)
@@ -217,39 +221,71 @@ export function removeOverlaps(
   gap: number,
   minLength: number,
 ): ContourPoint[][] {
+  const order = chains.map((_, i) => i).sort((a, b) => chains[b].length - chains[a].length)
+  return removeOverlapsInOrder(order.map((i) => chains[i]), width, height, gap, minLength).map((run) => run.points)
+}
+
+/** Jak `removeOverlaps`, ale pierwszeństwo ma kolejność wejścia; `source` to indeks linii wejściowej. */
+export function removeOverlapsInOrder(
+  chains: ContourPoint[][],
+  width: number,
+  height: number,
+  gap: number,
+  minLength: number,
+): { points: ContourPoint[]; source: number }[] {
   const taken = new Uint8Array(width * height)
   const radius = Math.max(1, Math.round(gap))
   const stamp = (p: ContourPoint) => {
+    const px = Math.round(p.x)
+    const py = Math.round(p.y)
     for (let dy = -radius; dy <= radius; dy++) {
-      const y = p.y + dy
+      const y = py + dy
       if (y < 0 || y >= height) continue
       for (let dx = -radius; dx <= radius; dx++) {
-        const x = p.x + dx
+        const x = px + dx
         if (x < 0 || x >= width || dx * dx + dy * dy > radius * radius) continue
         taken[y * width + x] = 1
       }
     }
   }
+  const isTaken = (p: ContourPoint) => {
+    const x = Math.round(p.x)
+    const y = Math.round(p.y)
+    return x >= 0 && y >= 0 && x < width && y < height && taken[y * width + x] === 1
+  }
   const lag = radius * 3
 
-  const kept: ContourPoint[][] = []
-  for (const chain of [...chains].sort((a, b) => b.length - a.length)) {
+  const kept: { points: ContourPoint[]; source: number }[] = []
+  chains.forEach((chain, source) => {
     const free = chain.map(() => false)
     let run: ContourPoint[] = []
     const flush = () => {
-      if (pathLength(run) >= minLength) kept.push(run)
+      if (pathLength(run) >= minLength) kept.push({ points: run, source })
       run = []
     }
     chain.forEach((point, i) => {
       if (i >= lag && free[i - lag]) stamp(chain[i - lag])
-      free[i] = !taken[point.y * width + point.x]
+      free[i] = !isTaken(point)
       if (free[i]) run.push(point)
       else flush()
     })
     flush()
     for (let i = Math.max(0, chain.length - lag); i < chain.length; i++) if (free[i]) stamp(chain[i])
-  }
+  })
   return kept
+}
+
+/** Punkty co ~1 px wzdłuż łamanej — usuwanie dubli sprawdza każdy piksel linii, nie tylko wierzchołki. */
+export function densify(points: ContourPoint[], step = 1): ContourPoint[] {
+  if (points.length < 2) return points
+  const out: ContourPoint[] = [points[0]]
+  for (let i = 1; i < points.length; i++) {
+    const a = points[i - 1]
+    const b = points[i]
+    const n = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / step))
+    for (let k = 1; k <= n; k++) out.push({ x: a.x + ((b.x - a.x) * k) / n, y: a.y + ((b.y - a.y) * k) / n })
+  }
+  return out
 }
 
 export function extractContours(
@@ -259,7 +295,7 @@ export function extractContours(
   options: ContourOptions = {},
 ): ContourPoint[][] {
   const { edgeQuantile, minLengthPx, simplifyEpsilonPx, maxContours } = { ...DEFAULTS, ...options }
-  const minGapPx = options.minGapPx ?? Math.max(4, Math.hypot(width, height) * 0.006)
+  const minGapPx = options.minGapPx ?? Math.max(4, Math.hypot(width, height) * 0.0018)
   const gradient = sobel(blur3(toGrayscale(rgba, width, height), width, height), width, height)
   const threshold = quantileThreshold(gradient.magnitude, edgeQuantile)
   const edges = thinEdges(gradient, width, height, threshold)

@@ -114,6 +114,17 @@ export const progressService = {
     return data.map(toSession)
   },
 
+  async getSessionsPage(page: number, pageSize: number): Promise<{ sessions: PracticeSessionSummary[]; total: number }> {
+    const { data, error, count } = await supabase
+      .from('practice_sessions')
+      .select('*', { count: 'exact' })
+      .not('completed_at', 'is', null)
+      .order('completed_at', { ascending: false })
+      .range(page * pageSize, (page + 1) * pageSize - 1)
+    if (error) fail('Nie udało się pobrać historii', error)
+    return { sessions: data.map(toSession), total: count ?? 0 }
+  },
+
   async startSession(params: {
     mode: PracticeMode
     title: string

@@ -3,7 +3,7 @@ import { Eyebrow, PageHeader, Panel, Spinner } from '../components/ui'
 import { ActivityCalendar } from '../features/progress/components/ActivityCalendar'
 import { GoalProgress } from '../features/progress/components/GoalProgress'
 import { GoalSetup } from '../features/progress/components/GoalSetup'
-import { SessionGrid } from '../features/progress/components/SessionGrid'
+import { SessionHistory } from '../features/progress/components/SessionHistory'
 import { useProgress } from '../features/progress/hooks/useProgress'
 
 function Stat({ label, value, hint }: { label: string; value: number; hint?: string }) {
@@ -17,7 +17,7 @@ function Stat({ label, value, hint }: { label: string; value: number; hint?: str
 }
 
 export function ProgressPage() {
-  const { profile, activity, today, goal, streaks, totalCompleted, recentSessions, isLoading, error, setGoal } =
+  const { profile, activity, today, goal, streaks, totalCompleted, isLoading, error, setGoal } =
     useProgress()
   const [isEditingGoal, setIsEditingGoal] = useState(false)
 
@@ -73,13 +73,7 @@ export function ProgressPage() {
         <Eyebrow as="h2" className="mb-4">
           Historia rysunków
         </Eyebrow>
-        {recentSessions.length > 0 ? (
-          <SessionGrid sessions={recentSessions} />
-        ) : (
-          <p className="rounded-[22px] border border-dashed border-line-strong px-5 py-10 text-center text-sm text-ink-soft">
-            Ukończ pierwsze ćwiczenie, a pojawi się tutaj.
-          </p>
-        )}
+        <SessionHistory />
       </section>
     </div>
   )

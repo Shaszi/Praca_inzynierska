@@ -12,7 +12,7 @@ import {
 } from '../utils/goalProgress'
 
 const HISTORY_DAYS = 366
-const RECENT_SESSIONS = 12
+const RECENT_SESSIONS = 1
 
 type UseProgressResult = {
   profile: Profile | null
